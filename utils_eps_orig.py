@@ -41,6 +41,20 @@ def eig_eps_fast(epsilons, n_out, n_in, y_inner, y_outer, mean, cov):
     u_d/=n_out
     return u_d
 
+def eig_eps_fast_nd(epsilons, n_out, n_in, y_inner, y_outer, mean, cov):
+    # version for nY>1
+    u_d = 0
+    for i in range(n_out):
+        eps_log_pdf = evaluate_log_epsilon(epsilons[i,:],mean,cov)
+            
+        eps_inners=y_outer[i]+epsilons[i,:]-y_inner
+        evidence=np.exp(evaluate_log_epsilon(eps_inners,mean,cov))
+        evidence=np.sum(evidence)/n_in
+        u_d+=eps_log_pdf - np.log(evidence)
+        
+    u_d/=n_out
+    return u_d
+
 def eig_eps_fast_vec(epsilons, n_out, n_in, y_inner, y_outer):
     u_d = np.empty((n_out,))
     u=0
