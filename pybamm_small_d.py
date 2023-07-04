@@ -94,28 +94,51 @@ def pybamm_SPMe_Sim(inputs):
     end_time = tm.time()
     execution_time = end_time - start_time
     print(f"Execution time for {num_inputs} input tuples: {execution_time:.2f} seconds")
+    #return terminal_voltage_list, currentData_list, time_vals_list
 
+    if False: # perhaps we add some plotting Bool here
+        for i in [0]:#range(len(time_vals_list)):
+            terminal_voltage = terminal_voltage_list[i]
+            currentData = currentData_list[i]
+            time_vals = time_vals_list[i]
+
+            fig, ax1 = plt.subplots()
+            ax1.plot(time_vals, terminal_voltage, label='Terminal Voltage', color='blue')
+            ax1.set_xlabel('Time [s]')
+            ax1.set_ylabel('Terminal Voltage [V]', color='blue')
+            ax1.tick_params('y', colors='blue')
+            
+            ax2 = ax1.twinx()
+            ax2.plot(time_vals, currentData, label='Current', color='orange')
+            ax2.set_ylabel('Current [A]', color='orange')
+            ax2.tick_params('y', colors='orange')
+            
+            plt.title(f'Terminal Voltage and Current for {i+1}th element in input list')
+            plt.legend()
+            plt.show()
+   
     return terminal_voltage_list, currentData_list, time_vals_list
+     
 
-def eig_reuse(d,nOut,nParam,nY,lb,ub):
+def eig_reuse(d,nOut,nParam,nY):
 
-    thetas_outer = ute.sample_prior(nOut,nParam,lb,ub,seed=3141)
+    thetas_outer = ute.sample_prior(nOut,nParam,lb,ub,seed=3143)
 
     nD = d.shape[0] # dimension of experimental design vector
     inputs_outer = np.empty((nOut,nParam+nD),dtype=object)
     for i in range(nOut):
         inputs_outer[i,0:nD] = d
         inputs_outer[i,nD:] = thetas_outer[i,:]
-    g_outer = pybamm_SPMe_Sim(inputs_outer)[0]
-    #print(g_outer)
+    g_outer = pybamm_SPMe_Sim(inputs_outer)[0]#np.load("g_outer_broken.npy",allow_pickle=True)#pybamm_SPMe_Sim(inputs_outer)[0]
+    #np.save("g_outer_broken.npy",g_outer)
     g_inner = g_outer
+    
+    nY = min(len(array) for array in g_outer)
     for i in range(nOut):
-        if len(g_outer[i])!=100:
-            print(inputs_outer[i,:])
-            print(i)
+        g_outer[i] = g_outer[i][:nY]
 
-    eps_mean=np.ones((nY,)); eps_cov = np.diag(np.ones(nY,)*3e-3**2)
-    eps_outer = ute.sample_epsilon(nOut, nY, mean=eps_mean, cov=eps_cov)
+    eps_mean=np.zeros((nY,)); eps_cov = np.diag(np.ones(nY,)*3e-3**2)   
+    eps_outer = ute.sample_epsilon(nOut, nY, mean=eps_mean, cov=eps_cov,seed=1)
     uD = ute.eig_eps_fast_nd(eps_outer,nOut,nIn,g_inner,g_outer,eps_mean,eps_cov)
 
     return uD
@@ -125,25 +148,22 @@ lb = [0.13,5.35e-11,4e-16,3.3e-15] # lower bound on thetas
 ub = [13,  5.35e-9, 4e-14,3.3e-13] # upper bound on thetas
 nParam = 4; # dimension of parameter space
 nY = 100; # dimension of observations (voltage)
-nIn = 5#int(1e1);
-nOut = 5#int(1e1);
-lb_eps = -np.ones((nY,))*0.3e-3 #+/- 0.3 mV accuracy
-ub_eps = np.ones((nY,))*0.3e-3
+nIn = 100#int(4e1);
+nOut = nIn#int(2e1);
 
     
 batCap = 4.9872
 #d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, batCap/4, -batCap/5, batCap/6, batCap/9 , -batCap/4])
-d= np.array([-3.0911889355170823, -1.5211969467334505, 4.814528106962678, -2.1024895090058147, -0.55072495961097, -0.7193709346699659, \
-    4.086008986753463, 3.2841841990468605, 4.855748911651398, 1.2920925893966504,\
-    3.3559404169619444e-09, 1.6135246707675016e-14, 2.757248954392864e-13])
-uD = eig_reuse(d,nOut,nParam,nY,lb,ub)
-#print(uD)
+# This is an example of a case where nY != 100, (nY=89 here)
+# d= np.array([-4.9872, 4.9872, 4.9872, -4.9872, 4.9872, 4.9872, 4.9872, 1.5903905102732894, 4.9872])
+# This is the optimal design from nOut=100 BayesOpt result
+d=np.array([-4.9872,-2.2541241421607903,4.9872, -0.17756030687109964, -0.13824609495841444, 0.2011070930706761, 4.9872, 4.9872, 4.9872])
+uD = eig_reuse(d,nOut,nParam,nY)
+print(uD)
 
-def bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY,lb,ub):
+def bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY):
     d = np.array([d0,d1,d2,d3,d4,d5,d6,d7,d8],dtype=object)
-    #print("testing for input vector: "+str(d))
-    u_d = eig_reuse(d,nOut,nParam,nY,lb,ub)
-    #print("output: "+str(u_d))
+    u_d = eig_reuse(d,nOut,nParam,nY)
     return u_d
 
 pbounds={'d0': (-batCap,batCap),'d1': (-batCap,batCap),'d2': (-batCap,batCap),'d3': (-batCap,batCap), \
@@ -151,16 +171,16 @@ pbounds={'d0': (-batCap,batCap),'d1': (-batCap,batCap),'d2': (-batCap,batCap),'d
         'd8': (-batCap,batCap)}
 
 optimizer = BayesianOptimization(
-    f=lambda d0,d1,d2,d3,d4,d5,d6,d7,d8: bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY,lb,ub), 
+    f=lambda d0,d1,d2,d3,d4,d5,d6,d7,d8: bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY), 
     pbounds=pbounds,
     verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
     random_state=1,
 )
 optimizer.maximize(
     init_points=1,
-    n_iter=20,
+    n_iter=50,
 )
-optimizer.max
+print(optimizer.max)
 
 """
 The input array is a n*15 array, with each row corresponding to a 
