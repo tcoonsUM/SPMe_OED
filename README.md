@@ -7,6 +7,9 @@ University of Michigan
 
 ## Methods
 Model: SPMe description
+
 Bayesian OED w reuse: link to X. Huan paper
+
 Parameters: Description of \thetas
+
 Experimental Design Parameterization: Fourier Series description
