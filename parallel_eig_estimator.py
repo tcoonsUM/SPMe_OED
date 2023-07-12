@@ -187,7 +187,6 @@ inputs = np.array([
 
 nD = inputs.shape[1] # dimension of experimental design vector
 
-print("Hi")
 print(parallelRuns(inputs,nY,nD,nIn,nOut,lb_eps,ub_eps,nParam,lb,ub,reuse))
 print("\n Done")
 
