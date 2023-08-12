@@ -22,7 +22,7 @@ def process_input(i, inputs, num_inputs, model_SPMe_1, parameters_1, var_pts_1):
     k = 4
     A_values = inputs[i, :k]
     B_values = inputs[i, k:2*k]
-    omega_values = np.linspace(1,k,num=k)#omega_values = inputs[i, 8:12]
+    omega_values = np.linspace(1,k,num=k)/12.0 #omega_values = inputs[i, 8:12]
     constant = inputs[i, 2*k]
 
     parameters_1['Current function [A]'] = my_fun(A_values, B_values, omega_values, constant)
