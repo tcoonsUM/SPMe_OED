@@ -80,8 +80,8 @@ def pybamm_SPMe_Sim(inputs):
 
     start_time = tm.time()
 
-
-    with Pool() as pool:
+    import os
+    with Pool(os. cpu_count()-1) as pool:
         # Pass num_inputs as an argument to process_input function using functools.partial
         import functools
         func = functools.partial(process_input, inputs=inputs, num_inputs=num_inputs, model_SPMe_1 = model_SPMe_1, parameters_1 = parameters_1, var_pts_1 = var_pts_1)
@@ -147,69 +147,70 @@ def eig_reuse(d,nOut,nParam,nY):
 
 
 
-start_time_total = tm.time()
+if __name__ == "__main__":
+    start_time_total = tm.time()
 
-import utils_eps_orig as ute
-lb = [0.13,5.35e-11,4e-16,3.3e-15] # lower bound on thetas
-ub = [13,  5.35e-9, 4e-14,3.3e-13] # upper bound on thetas
-nParam = 4; # dimension of parameter space
-nY = 100; # dimension of observations (voltage)
+    import utils_eps_orig as ute
+    lb = [0.13,5.35e-11,4e-16,3.3e-15] # lower bound on thetas
+    ub = [13,  5.35e-9, 4e-14,3.3e-13] # upper bound on thetas
+    nParam = 4; # dimension of parameter space
+    nY = 100; # dimension of observations (voltage)
 
-# Add a dialog box to input nIn
-nIn = input("Please enter the value of nIn: ")
+    # Add a dialog box to input nIn
+    nIn = input("Please enter the value of nIn: ")
 
-# Convert the input to an integer (assuming nIn is an integer)
-nIn = int(nIn)
+    # Convert the input to an integer (assuming nIn is an integer)
+    nIn = int(nIn)
 
-# Set nOut equal to nIn
-nOut = nIn
-    
-batCap = 4.9872
-#d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, batCap/4, -batCap/5, batCap/6, batCap/9 , -batCap/4])
-# This is an example of a case where nY != 100, (nY=89 here)
-# d= np.array([-4.9872, 4.9872, 4.9872, -4.9872, 4.9872, 4.9872, 4.9872, 1.5903905102732894, 4.9872])
-# This is the optimal design from nOut=100 BayesOpt result
-#d=np.array([-4.9872,-2.2541241421607903,4.9872, -0.17756030687109964, -0.13824609495841444, 0.2011070930706761, 4.9872, 4.9872, 4.9872])
-d=np.array([-4.9872/10,-4.9872/10,4.9872/10, -4.9872/10, -4.9872/10, 4.9872/10, 4.9872/10, 4.9872/10, 4.9872/10])
-uD = eig_reuse(d,nOut,nParam,nY)
-print(uD)
+    # Set nOut equal to nIn
+    nOut = nIn
+        
+    batCap = 4.9872
+    #d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, batCap/4, -batCap/5, batCap/6, batCap/9 , -batCap/4])
+    # This is an example of a case where nY != 100, (nY=89 here)
+    d= np.array([-4.9872, 4.9872, 4.9872, -4.9872, 4.9872, 4.9872, 4.9872, 1.5903905102732894, 4.9872])
+    # This is the optimal design from nOut=100 BayesOpt result
+    #d=np.array([-4.9872,-2.2541241421607903,4.9872, -0.17756030687109964, -0.13824609495841444, 0.2011070930706761, 4.9872, 4.9872, 4.9872])
+    #d=np.array([-4.9872/10,-4.9872/10,4.9872/10, -4.9872/10, -4.9872/10, 4.9872/10, 4.9872/10, 4.9872/10, 4.9872/10])
+    uD = eig_reuse(d,nOut,nParam,nY)
+    print(uD)
 
-def bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY):
-    d = np.array([d0,d1,d2,d3,d4,d5,d6,d7,d8],dtype=object)
-    u_d = eig_reuse(d,nOut,nParam,nY)
-    return u_d
+    def bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY):
+        d = np.array([d0,d1,d2,d3,d4,d5,d6,d7,d8],dtype=object)
+        u_d = eig_reuse(d,nOut,nParam,nY)
+        return u_d
 
-pbounds={'d0': (-batCap,batCap),'d1': (-batCap,batCap),'d2': (-batCap,batCap),'d3': (-batCap,batCap), \
-        'd4':(-batCap,batCap), 'd5':(-batCap,batCap), 'd6':(-batCap,batCap), 'd7':(-batCap,batCap), \
-        'd8': (-batCap,batCap)}
+    pbounds={'d0': (-batCap,batCap),'d1': (-batCap,batCap),'d2': (-batCap,batCap),'d3': (-batCap,batCap), \
+            'd4':(-batCap,batCap), 'd5':(-batCap,batCap), 'd6':(-batCap,batCap), 'd7':(-batCap,batCap), \
+            'd8': (-batCap,batCap)}
 
-optimizer = BayesianOptimization(
-    f=lambda d0,d1,d2,d3,d4,d5,d6,d7,d8: bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY), 
-    pbounds=pbounds,
-    verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-    random_state=1,
-)
-optimizer.maximize(
-    init_points=1,
-    n_iter=50,
-)
-print(optimizer.max)
+    optimizer = BayesianOptimization(
+        f=lambda d0,d1,d2,d3,d4,d5,d6,d7,d8: bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY), 
+        pbounds=pbounds,
+        verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
+        random_state=1,
+    )
+    #optimizer.maximize(
+    #    init_points=1,
+    #    n_iter=50,
+    #)
+    #print(optimizer.max)
 
-print("Done")
-end_time_total = tm.time()
-execution_time_total = end_time_total - start_time_total
+    print("Done")
+    end_time_total = tm.time()
+    execution_time_total = end_time_total - start_time_total
 
-# Convert execution_time_total to minutes
-execution_time_hours = execution_time_total / 60.0
+    # Convert execution_time_total to minutes
+    execution_time_hours = execution_time_total / 60.0
 
 
-print(f"Execution time for {nIn} input tuples: {execution_time_hours:.2f} minutes")
+    print(f"Execution time for {nIn} input tuples: {execution_time_hours:.2f} minutes")
 
-# Get the current system time and date
-current_time = datetime.datetime.now().strftime("%m/%d/%y %H:%M:%S")
+    # Get the current system time and date
+    current_time = datetime.datetime.now().strftime("%m/%d/%y %H:%M:%S")
 
-# Save the runtime to a new .txt file
-with open("shell_runtime_thomas_small_ds_parallel_multiprocessing_pool.txt", "a") as file:
-    file.write(f"Date and time: {current_time}, Execution time for {nIn} input tuples: {execution_time_hours:.2f} minutes\n")
+    # Save the runtime to a new .txt file
+    with open("shell_runtime_thomas_small_ds_parallel_multiprocessing_pool.txt", "a") as file:
+        file.write(f"Date and time: {current_time}, Execution time for {nIn} input tuples: {execution_time_hours:.2f} minutes\n")
 
-print("Done")
+    print("Done")

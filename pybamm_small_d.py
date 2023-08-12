@@ -143,99 +143,101 @@ def eig_reuse(d,nOut,nParam,nY):
 
     return uD
 
-import utils_eps_orig as ute
-lb = [0.13,5.35e-11,4e-16,3.3e-15] # lower bound on thetas
-ub = [13,  5.35e-9, 4e-14,3.3e-13] # upper bound on thetas
-nParam = 4; # dimension of parameter space
-nY = 100; # dimension of observations (voltage)
-nIn = 100#int(4e1);
-nOut = nIn#int(2e1);
 
-    
-batCap = 4.9872
-#d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, batCap/4, -batCap/5, batCap/6, batCap/9 , -batCap/4])
-# This is an example of a case where nY != 100, (nY=89 here)
-# d= np.array([-4.9872, 4.9872, 4.9872, -4.9872, 4.9872, 4.9872, 4.9872, 1.5903905102732894, 4.9872])
-# This is the optimal design from nOut=100 BayesOpt result
-d=np.array([-4.9872,-2.2541241421607903,4.9872, -0.17756030687109964, -0.13824609495841444, 0.2011070930706761, 4.9872, 4.9872, 4.9872])
-uD = eig_reuse(d,nOut,nParam,nY)
-print(uD)
+if __name__ == "__main__":
+    import utils_eps_orig as ute
+    lb = [0.13,5.35e-11,4e-16,3.3e-15] # lower bound on thetas
+    ub = [13,  5.35e-9, 4e-14,3.3e-13] # upper bound on thetas
+    nParam = 4; # dimension of parameter space
+    nY = 100; # dimension of observations (voltage)
+    nIn = 100#int(4e1);
+    nOut = nIn#int(2e1);
 
-def bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY):
-    d = np.array([d0,d1,d2,d3,d4,d5,d6,d7,d8],dtype=object)
-    u_d = eig_reuse(d,nOut,nParam,nY)
-    return u_d
+        
+    batCap = 4.9872
+    d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, batCap/4, -batCap/5, batCap/6, batCap/9 , -batCap/4])
+    # This is an example of a case where nY != 100, (nY=89 here)
+    #d= np.array([-4.9872, 4.9872, 4.9872, -4.9872, 4.9872, 4.9872, 4.9872, 1.5903905102732894, 4.9872])
+    # This is the optimal design from nOut=100 BayesOpt result
+    #d=np.array([-4.9872,-2.2541241421607903,4.9872, -0.17756030687109964, -0.13824609495841444, 0.2011070930706761, 4.9872, 4.9872, 4.9872])
+    uD = eig_reuse(d,nOut,nParam,nY)
+    print(uD)
 
-pbounds={'d0': (-batCap,batCap),'d1': (-batCap,batCap),'d2': (-batCap,batCap),'d3': (-batCap,batCap), \
-        'd4':(-batCap,batCap), 'd5':(-batCap,batCap), 'd6':(-batCap,batCap), 'd7':(-batCap,batCap), \
-        'd8': (-batCap,batCap)}
+    def bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY):
+        d = np.array([d0,d1,d2,d3,d4,d5,d6,d7,d8],dtype=object)
+        u_d = eig_reuse(d,nOut,nParam,nY)
+        return u_d
 
-optimizer = BayesianOptimization(
-    f=lambda d0,d1,d2,d3,d4,d5,d6,d7,d8: bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY), 
-    pbounds=pbounds,
-    verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
-    random_state=1,
-)
-optimizer.maximize(
-    init_points=1,
-    n_iter=50,
-)
-print(optimizer.max)
+    pbounds={'d0': (-batCap,batCap),'d1': (-batCap,batCap),'d2': (-batCap,batCap),'d3': (-batCap,batCap), \
+            'd4':(-batCap,batCap), 'd5':(-batCap,batCap), 'd6':(-batCap,batCap), 'd7':(-batCap,batCap), \
+            'd8': (-batCap,batCap)}
 
-"""
-The input array is a n*15 array, with each row corresponding to a 
-particular input current waveform. Each row has 15 elements: the first 
-7 (elements 0-6) are the amplitudes of each of the sine waves that 
-make up the input waveform, the following 7 (elements 7-13) are 
-the corresponding frequencies, and the last element is a constant. The 
-input waveform is essentially a Fourier series truncated at 7 sine terms.
-"""
+    optimizer = BayesianOptimization(
+        f=lambda d0,d1,d2,d3,d4,d5,d6,d7,d8: bo_friendly(d0,d1,d2,d3,d4,d5,d6,d7,d8,nOut,nParam,nY), 
+        pbounds=pbounds,
+        verbose=2, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
+        random_state=1,
+    )
+    #optimizer.maximize(
+    #    init_points=1,
+    #    n_iter=50,
+    #)
+    #print(optimizer.max)
 
-#batCap = 4.9872 
-#inputs = np.array([
-#    [-batCap/2, batCap/3, -batCap/4, batCap/5, -batCap/6, batCap/7, -batCap/8, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/2],
-#    [batCap/3, -batCap/4, batCap/5, -batCap/6, batCap/7, -batCap/8, batCap/9, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/3],
-#    [-batCap/4, batCap/5, -batCap/6, batCap/7, -batCap/8, batCap/9, -batCap/10, 0.55, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/4],
-#    [batCap/5, -batCap/6, batCap/7, -batCap/8, batCap/9, -batCap/10, batCap/11, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/5],
-#    [-batCap/6, batCap/7, -batCap/8, batCap/9, -batCap/10, batCap/11, -batCap/12, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/6]
-#])
-#%% setting up OED problem
-# params (theta) are in order: [el_cond, el_diff]
-#         parameters_1['Electrolyte conductivity [S.m-1]'] = 1.3 #****
-#         parameters_1['Electrolyte diffusivity [m2.s-1]'] = 5.35e-10 #****
-#         parameters_1['Positive electrode diffusivity [m2.s-1]']: 4e-15
-#         parameters_1['Negative electrode diffusivity [m2.s-1]']: 3.3e-14,
+    """
+    The input array is a n*15 array, with each row corresponding to a 
+    particular input current waveform. Each row has 15 elements: the first 
+    7 (elements 0-6) are the amplitudes of each of the sine waves that 
+    make up the input waveform, the following 7 (elements 7-13) are 
+    the corresponding frequencies, and the last element is a constant. The 
+    input waveform is essentially a Fourier series truncated at 7 sine terms.
+    """
+
+    #batCap = 4.9872 
+    #inputs = np.array([
+    #    [-batCap/2, batCap/3, -batCap/4, batCap/5, -batCap/6, batCap/7, -batCap/8, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/2],
+    #    [batCap/3, -batCap/4, batCap/5, -batCap/6, batCap/7, -batCap/8, batCap/9, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/3],
+    #    [-batCap/4, batCap/5, -batCap/6, batCap/7, -batCap/8, batCap/9, -batCap/10, 0.55, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/4],
+    #    [batCap/5, -batCap/6, batCap/7, -batCap/8, batCap/9, -batCap/10, batCap/11, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/5],
+    #    [-batCap/6, batCap/7, -batCap/8, batCap/9, -batCap/10, batCap/11, -batCap/12, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, -batCap/6]
+    #])
+    #%% setting up OED problem
+    # params (theta) are in order: [el_cond, el_diff]
+    #         parameters_1['Electrolyte conductivity [S.m-1]'] = 1.3 #****
+    #         parameters_1['Electrolyte diffusivity [m2.s-1]'] = 5.35e-10 #****
+    #         parameters_1['Positive electrode diffusivity [m2.s-1]']: 4e-15
+    #         parameters_1['Negative electrode diffusivity [m2.s-1]']: 3.3e-14,
 
 
-#%% randomly sampling from priors on theta
-"""
-thetas_outer = ute.sample_prior(nOut,nParam,lb,ub,seed=3141)
-if reuse==True:
-    thetas_inner = thetas_outer
+    #%% randomly sampling from priors on theta
+    """
+    thetas_outer = ute.sample_prior(nOut,nParam,lb,ub,seed=3141)
+    if reuse==True:
+        thetas_inner = thetas_outer
 
-#%% evaluating g(\theta,d) for inner and outer loops
-    
-batCap = 4.9872
-d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, 0.55, 1.0, 2.0, 3.0, 0.5, 4.0, 5.0, 6.0, -batCap/4])
+    #%% evaluating g(\theta,d) for inner and outer loops
+        
+    batCap = 4.9872
+    d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, 0.55, 1.0, 2.0, 3.0, 0.5, 4.0, 5.0, 6.0, -batCap/4])
 
-nD = d.shape[0] # dimension of experimental design vector
-inputs_outer = np.empty((nOut,nParam+nD))
-for i in range(nOut):
-    inputs_outer[i,0:nD] = d
-    inputs_outer[i,nD:] = thetas_outer[i,:]
-g_outer = pybamm_SPMe_Sim(inputs_outer)[0]
-#g_outer=np.load("test_inners.npy")
-if reuse==True:
-    g_inner = g_outer
-else:
-    # fill this in later if we ever want to not use reuse
-    print("use reuse instead pls")
-    
-#%% evaluating U(d)
+    nD = d.shape[0] # dimension of experimental design vector
+    inputs_outer = np.empty((nOut,nParam+nD))
+    for i in range(nOut):
+        inputs_outer[i,0:nD] = d
+        inputs_outer[i,nD:] = thetas_outer[i,:]
+    g_outer = pybamm_SPMe_Sim(inputs_outer)[0]
+    #g_outer=np.load("test_inners.npy")
+    if reuse==True:
+        g_inner = g_outer
+    else:
+        # fill this in later if we ever want to not use reuse
+        print("use reuse instead pls")
+        
+    #%% evaluating U(d)
 
-eps_mean=np.ones((nY,)); eps_cov = np.diag(np.ones(nY,)*3e-3**2)
-eps_outer = ute.sample_epsilon(nOut, nY, mean=eps_mean, cov=eps_cov)
-uD = ute.eig_eps_fast(eps_outer,nOut,nIn,g_inner,g_outer,eps_mean,eps_cov)
-print(uD)
-# }
-"""
+    eps_mean=np.ones((nY,)); eps_cov = np.diag(np.ones(nY,)*3e-3**2)
+    eps_outer = ute.sample_epsilon(nOut, nY, mean=eps_mean, cov=eps_cov)
+    uD = ute.eig_eps_fast(eps_outer,nOut,nIn,g_inner,g_outer,eps_mean,eps_cov)
+    print(uD)
+    # }
+    """
