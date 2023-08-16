@@ -164,7 +164,10 @@ if __name__ == "__main__":
 
     # Set nOut equal to nIn
     nOut = nIn
-        
+    """How is the input array d defined? The first 4 inputs are the sine amplitudes, the next 4 are the cosine amplitudes, 
+    and the last term is the constant. The equation for current becomes -> 
+    \text{current}(t) = \sum_{i=1}^{k} A_{\text{values}_i} \cdot \sin(2 \pi \cdot \omega_{\text{values}_i} \cdot t) + \sum_{i=1}^{k} B_{\text{values}_i} \cdot \cos(2 \pi \cdot \omega_{\text{values}_i} \cdot t) + \text{constant}    
+    """    
     batCap = 4.9872
     #d = np.array([-batCap/4, batCap/5, -batCap/6, batCap/7, batCap/4, -batCap/5, batCap/6, batCap/9 , -batCap/4])
     # This is an example of a case where nY != 100, (nY=89 here)
