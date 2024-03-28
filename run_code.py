@@ -4,11 +4,26 @@ import pandas as pd
 import numpy as np
 import pybamm
 import scipy
+from scipy.special import hermite
 
 import time as tm
 
 def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_parameter, sep_por, neg_por, pos_por, cap_dl_neg, p1, p2, p3, p4, p5, p6, p7, p8):
 
+    def buildPhi(x, order):
+        Phi = np.zeros((len(x), order+1))
+        for o in range(order+1):
+            for row in range(len(x)):
+                Phi[row,o] = hermite(o)(x[row])
+        return Phi
+
+    def diff_model(x, coeffs, order=3):
+        # parameters:
+        # x - input to make predictions at, must be an array
+        # coeffs - regression coefficients to use in hermite poly model
+        phi = buildPhi(x, order)
+        return np.exp(phi@coeffs)
+        
     def my_nmc_diff(c_s_p, T,a,b,c0,d):
         from pybamm import Interpolant,constants, exp
         from pybamm import exp, constants, maximum, minimum
@@ -36,7 +51,8 @@ def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_paramete
 
         #print("Exponent:", exp(a*c_s_p**3+b*c_s_p**2+c0*c_s_p+d))
         #return 8e-15
-        return minimum(maximum(exp(a*c_s_p**3+b*c_s_p**2+c0*c_s_p+d),3e-15),2.5e-13) #max and min values from Chueh paper, fitting is also from Chueh paper
+        reg_output = diff_model(c_s_p,np.array([d,c0,b,a])
+        return minimum(maximum(reg_output,3e-15),2.5e-13) #max and min values from Chueh paper, fitting is also from Chueh paper
 
 
 
