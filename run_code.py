@@ -51,7 +51,7 @@ def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_paramete
 
         #print("Exponent:", exp(a*c_s_p**3+b*c_s_p**2+c0*c_s_p+d))
         #return 8e-15
-        reg_output = diff_model(c_s_p,np.array([d,c0,b,a])
+        reg_output = diff_model(c_s_p,np.array([d,c0,b,a]))
         return minimum(maximum(reg_output,3e-15),2.5e-13) #max and min values from Chueh paper, fitting is also from Chueh paper
 
 
