@@ -18,11 +18,12 @@ def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_paramete
         return Phi
 
     def diff_model(x, coeffs, order=3):
+        from pybamm import exp
         # parameters:
         # x - input to make predictions at, must be an array
         # coeffs - regression coefficients to use in hermite poly model
         phi = buildPhi(x, order)
-        return np.exp(phi@coeffs)
+        return exp(phi@coeffs)
         
     def my_nmc_diff(c_s_p, T,a,b,c0,d):
         from pybamm import Interpolant,constants, exp
@@ -51,7 +52,7 @@ def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_paramete
 
         #print("Exponent:", exp(a*c_s_p**3+b*c_s_p**2+c0*c_s_p+d))
         #return 8e-15
-        #reg_output = diff_model(c_s_p,np.array([d,c0,b,a]))
+
         reg_output = exp( 1*d + 2*c_s_p*c0 + ( 4*c_s_p**2 - 2 ) * b + ( 8*c_s_p**3 - 12*c_s_p)*a )
         return minimum(maximum(reg_output,3e-15),2.5e-13) #max and min values from Chueh paper, fitting is also from Chueh paper
 
@@ -160,19 +161,12 @@ def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_paramete
 
 
     def create_custom_experiment(p1,p2,p3,p4,p5,p6,p7,p8):
-
-
-        def my_fun(A, constant):
-                
-                def current(t):
-                    sine_terms = A * pybamm.sin(2 * np.pi * t) 
-                    return sine_terms + constant
-                return current
         
-        t = np.linspace(0, 20, 6000) #change this time to be one period of the smallest sine (or a quarter of a period) 
+        
+        t = np.linspace(0, p8, 2501) #change this time to be one period of the smallest sine (or a quarter of a period)  #start stop num #see Nyquist theorem - 2501 comfortably fits a 1 Hz limit 
 
-        def chirp_signal(f0=0.0,t1=20): #look at p7 and p8 and fit them - t1 was 1 previously
-            chirp = scipy.signal.chirp(t,f0,t1,1000)
+        def chirp_signal(f0,t1): #look at p7 and p8 and fit them - t1 was 1 previously
+            chirp = scipy.signal.chirp(t,f0,t1,1)
             return chirp
 
 
@@ -183,17 +177,40 @@ def run_battery_simulation(a_nmc, b_nmc, c_nmc, d_nmc, my_graphite_diff_paramete
         experiment = pybamm.Experiment( [pybamm.step.current(drive_cycle_power)]+[pybamm.step.current(drive_cycle_power),
             ("Rest for 200 seconds", f"Charge at {p1}C for {p2} seconds or until 4.2 V", f"Rest for {p3} seconds", f"Charge at {p4}C for {p5} seconds or until 4.2 V", f"Rest for {p6} seconds", f"Discharge at {p4}C for {p5} seconds or until 3.0 V", "Rest for 300 seconds")
         ] * 5 )
-        experiment_ending = my_fun(5,0.1)
         return experiment
 
+    # Generate a time vector where dt varies with frequency
+#     def create_custom_experiment(p1,p2,p3,p4,p5,p6,p7,p8):
+#         f0 = p7
+#         f1 = 100
+#         t1 = p8
+        
+#         t = [0]  # Starting point of time
+#         while t[-1] < t1:
+#             current_time = t[-1]
+#             current_freq = f0 + (f1 - f0) * current_time / t1
+#             dt = 1 / (100 * current_freq)  # 100 points per period
+#             next_time = current_time + dt
+#             if next_time > t1:
+#                 break
+#             t.append(next_time)
+
+#         t = np.array(t)
+        
+#         def chirp_signal(f0,t1): #look at p7 and p8 and fit them - t1 was 1 previously
+#             chirp = scipy.signal.chirp(t,f0,t1,f1)
+#             return chirp
+
+
+#         drive_cycle_power = np.column_stack([t, chirp_signal(p7,p8)])
+#         experiment = pybamm.Experiment( [pybamm.step.current(drive_cycle_power)]+[pybamm.step.current(drive_cycle_power),
+#             ("Rest for 200 seconds", f"Charge at {p1}C for {p2} seconds or until 4.2 V", f"Rest for {p3} seconds", f"Charge at {p4}C for {p5} seconds or until 4.2 V", f"Rest for {p6} seconds", f"Discharge at {p4}C for {p5} seconds or until 3.0 V", "Rest for 300 seconds")
+#         ] * 5 )
+#         return experiment
 
     custom_experiment = create_custom_experiment(p1,p2,p3,p4,p5,p6,p7,p8)
 
     start_time = tm.time()
-    experiment = pybamm.Experiment(
-        [("Rest for 2 minutes","Charge at 1 C for 12 minutes or until 4.2 V","Rest for 1 hour","Discharge at C/3 for 12 minutes or until 3.0 V","Rest for 1 hour")] 
-    )
-
 
 
     initial_voltage = 3.9 
