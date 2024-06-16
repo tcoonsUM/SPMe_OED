@@ -22,7 +22,7 @@ def utility_with_reuse_iid(y_vals, model_evals, n_in, n_out, eps_mean, eps_cov):
     u_d = np.zeros((n_out,))
     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
     for i in range(n_out):
-        if i%20==0:
+        if i%250==0:
             print(i)
         evidence = 0
         
@@ -33,6 +33,22 @@ def utility_with_reuse_iid(y_vals, model_evals, n_in, n_out, eps_mean, eps_cov):
         evidence /= n_in
         u_d[i] += evaluate_log_likelihood_w_reuse_iid(y_vals[i,:],model_evals[i,:], eps_mean, eps_cov) - np.log(evidence)
         print(u_d[i])
+    return u_d
+
+def utility_with_reuse_iid_lim(y_vals, model_evals, n_in, n_out, eps_mean, eps_cov):
+    u_d = np.zeros((n_out,))
+    for i in range(n_out):
+        evidence = 0
+        
+        for j in range(n_in):   
+            log_likelihood = evaluate_log_likelihood_w_reuse_iid(y_vals[i,:], model_evals[j,:], eps_mean, eps_cov)
+            evidence += np.exp(log_likelihood)
+            
+        evidence /= n_in
+        u_d[i] += evaluate_log_likelihood_w_reuse_iid(y_vals[i,:],model_evals[i,:], eps_mean, eps_cov) - np.log(evidence)
+        if i%50==0:
+            print(i)
+            print(u_d[i])
     return u_d
 
 def utility_with_reuse(y_vals, model_evals, n_in, n_out, eps_mean, eps_cov):
@@ -52,7 +68,7 @@ def utility_with_reuse(y_vals, model_evals, n_in, n_out, eps_mean, eps_cov):
     return u_d
 
 def load_files(integer):
-    folder_path = "summary_statistics_fixed_design_no_chirp"
+    folder_path = "summary_statistics_fixed_design_no_chirp_new"
     file_extension = f"_{integer}.npy"
 
     for filename in os.listdir(folder_path):
@@ -62,32 +78,39 @@ def load_files(integer):
     return y   
 
 def load_files_chirp(integer):
-    folder_path = "summary_statistics_fixed_design"
+    folder_path = "summary_statistics_fixed_design_new"
     file_extension = f"_{integer}.npy"
+    #foundFile = False
 
     for filename in os.listdir(folder_path):
         if filename.endswith(file_extension):
             y = np.load(os.path.join(folder_path, filename))
-    nanIndices = [5, 7, 50, 52, 94,  95,  96,  97, 139, 140, 141, 142, 184, 185, 186, 187]
-    y = np.delete(y, nanIndices)
+            #foundFile = True
+            nanIndices = [5, 7, 50, 52, 94,  95,  96,  97, 139, 140, 141, 142, 184, 185, 186, 187]
+            y = np.delete(y, nanIndices)
+    
+    # if foundFile==False:
+    #     integer+=1
+    #     print(integer)
+    #     y, integer = load_files_chirp(integer)
 
     return y
 
 #%% starting with non-chirp signal
 
-n_out = 1000 # number of inner and outer loop samples (using reuse)
+n_out = 10000 # number of inner and outer loop samples (using reuse)
 print("no chirp, nout = "+str(n_out))
 # load in likelihood statistics (defining mean and cov of eps ~ MVN(eps_mean, eps_cov) )
 n_y = 105 # dimension of y
 eps_mean = np.zeros((n_y,))#np.load("likelihood_chirp/means.npy")
 eps_variances = np.load("likelihood_no_chirp/vars.npy")
-eps_variances[np.where(eps_variances<1e-9)]=1e-9
+#eps_variances[np.where(eps_variances<1e-9)]=1e-9
 
 # load in model evaluations at non-chirp design
 y = np.zeros((n_out,n_y))
 model_evals = np.copy(y)
 for integer in range(n_out):
-    if integer%100==0:
+    if integer%500==0:
         print(integer)
     # Load files based on the provided integer
     g = load_files(integer)
@@ -99,16 +122,18 @@ for integer in range(n_out):
     y[integer,:] = g + eps
 
 #%% compute utility 
-print("Computing utility w IID assumption, no chirp")
+n_in = 5000
+n_out = 1000
+print("Computing utility w IID assumption, no chirp, 1000 utilities but full n_in")
 #y = np.load("likelihood_no_chirp/y.npy")
-model_evals = np.load("likelihood_no_chirp/model_evals.npy")
-eps_variances = np.load("likelihood_no_chirp/vars.npy")
-eps_variances[np.where(eps_variances<1e-9)]=1e-9
-u_no_chirp = utility_with_reuse_iid(y, model_evals, n_out, n_out, eps_mean, eps_variances)
+#model_evals = np.load("likelihood_no_chirp/model_evals.npy")
+#eps_variances = np.load("likelihood_no_chirp/vars.npy")
+eps_variances[np.where(eps_variances<1e-8)]=1e-8
+u_no_chirp = utility_with_reuse_iid_lim(y, model_evals, n_in, n_out, eps_mean, eps_variances)
 
 #%% chirp signal
 
-n_out = 1000 # number of inner and outer loop samples (using reuse)
+n_out = 10000 # number of inner and outer loop samples (using reuse)
 print("chirp, nout = "+str(n_out))
 # load in likelihood statistics (defining mean and cov of eps ~ MVN(eps_mean, eps_cov) )
 n_y = 209 # dimension of y
@@ -119,7 +144,7 @@ eps_variances_chirp = np.load("likelihood_chirp/var.npy")
 y = np.zeros((n_out,n_y))
 model_evals = np.copy(y)
 for integer in range(n_out):
-    if integer%5==0:
+    if integer%500==0:
         print(integer)
     # Load files based on the provided integer
     g = load_files_chirp(integer)
@@ -132,13 +157,14 @@ for integer in range(n_out):
 
 #%% compute utility 
 n_out = 1000
+n_in=5000
 n_y = 209
-print("Computing utility w IID assumption, chirp")
-y = np.load("likelihood_chirp/y.npy")
-model_evals = np.load("likelihood_chirp/model_evals.npy")
-eps_variances = np.load("likelihood_chirp/var.npy")
-eps_variances[np.where(eps_variances<1e-6)]=1e-6
-u_chirp = utility_with_reuse_iid(y, model_evals, n_out, n_out, eps_mean_chirp, eps_variances)
+print("Computing utility w IID assumption, chirp, nout = 1000, nin=10K")
+#y = np.load("likelihood_chirp/y.npy")
+#model_evals = np.load("likelihood_chirp/model_evals.npy")
+#eps_variances = np.load("likelihood_chirp/var.npy")
+eps_variances_chirp[np.where(eps_variances_chirp<1e-8)]=1e-8
+u_chirp = utility_with_reuse_iid_lim(y, model_evals, n_in, n_out, eps_mean_chirp, eps_variances_chirp)
 
 #%% chirp signal
 
