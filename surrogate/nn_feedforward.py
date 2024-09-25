@@ -186,6 +186,7 @@ class feed_forward_bn(nn.Module):
 
 #model = feed_forward(n_theta, n_theta*8, n_y).to(device)
 model = feed_forward_bn(n_theta, n_theta*8, n_y, seed=43, dropout_rate=0.5).to(device)
+model.train()
 
 loss_fn = nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
