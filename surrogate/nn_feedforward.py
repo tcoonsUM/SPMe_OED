@@ -30,8 +30,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 #%% read in files, convert to torch tensor
-df_in = pd.read_csv("parameters_and_design_sep24_5272_runs.csv")
-df_out = pd.read_csv("summary_statistics_sep24_5272_runs.csv")
+df_in = pd.read_csv("combined_parameters_oct8_2024.csv")
+df_out = pd.read_csv("combined_summary_cleaned_oct8_2024.csv")
 
 if torch.cuda.is_available():
     device = torch.device('cuda:0')
@@ -39,23 +39,24 @@ else:
     device = torch.device('cpu') 
 
 X = torch.from_numpy(df_in.values).double().to(device)#[:2000,:]
-y = torch.from_numpy(df_out.values).double().to(device)#[:2000,:2]
+y = torch.from_numpy(df_out.values).double().to(device)#[:,4:6]#[:2000,:2]
 n_theta = X.shape[1]
 n_y = y.shape[1]
 
 #%% cleaning y data
-pos_inds = torch.tensor([0, 1, 3, 5, 7, 9, 10, 12, 13, 16, 18, 19, 22, 24, 25, 28, 30])
-n_repeats = 31 # summary stats repeat 31 times
+pos_inds = torch.tensor([0, 1, 3, 5, 8, 9, 12, 14, 15, 18, 20, 21, 24, 26]) #7 8 10 11 removed
+# original positive indices: 0, 1, 3, 5, 7(X), 9(-1), 10(X), 12(-4 from here onwards), 13, 16, 18, 19, 22, 24, 25, 28, 30
+n_stats = 31 # number of summary stats that are repeated (5 times)
 y_cleaned = y
 for j in range(n_y):#range(n_y-1):
     # cleaning y data for large values, set them to 2*stdev from median
-    thresh = 1e5
+    thresh = 1e2
     quantile = y_cleaned[:,j].median() + 2*y_cleaned[np.where(y_cleaned[:,j].abs()<thresh),j].std()
     y_cleaned[np.where(y_cleaned[:,j].abs()>thresh),j] = quantile
     
     # apply logarithm to strictly positive indices
-    if (pos_inds == np.remainder(j,31)).sum():
-        y_cleaned[:,j] = y_cleaned[:,j].log()
+    # if (pos_inds == np.remainder(j,31)).sum():
+    #     y_cleaned[:,j] = y_cleaned[:,j].log()
 
 #%% scale and test train split
 from sklearn.preprocessing import StandardScaler
@@ -114,14 +115,14 @@ print(f"Using {device} device")
 #       return Y_pred
 
 class feed_forward(nn.Module): 
-  def __init__(self, n_x, n_hidden, n_y, seed=42):
+  def __init__(self, n_x, n_hidden1, n_hidden2, n_y, seed=42):
     super().__init__()
     torch.manual_seed(seed)
-    self.l1 = nn.Linear(n_x, n_hidden)
-    self.l2 = nn.Linear(n_hidden, n_hidden)
-    self.l3 = nn.Linear(n_hidden, n_hidden)
-    self.l4 = nn.Linear(n_hidden, n_hidden)
-    self.l5 = nn.Linear(n_hidden, n_y)
+    self.l1 = nn.Linear(n_x, n_hidden1)
+    self.l2 = nn.Linear(n_hidden1, n_hidden2)
+    self.l3 = nn.Linear(n_hidden2, n_hidden2)
+    self.l4 = nn.Linear(n_hidden2, n_hidden1)
+    self.l5 = nn.Linear(n_hidden1, n_y)
     # self.net = nn.Sequential(
     #     nn.Linear(n_x, n_hidden), 
     #     nn.ReLU(),
@@ -184,8 +185,8 @@ class feed_forward_bn(nn.Module):
     Y_pred = self.forward(X)
     return Y_pred
 
-#model = feed_forward(n_theta, n_theta*8, n_y).to(device)
-model = feed_forward_bn(n_theta, n_theta*8, n_y, seed=43, dropout_rate=0.5).to(device)
+#model = feed_forward(n_theta, n_theta*5, n_theta*10, n_y).to(device)
+model = feed_forward_bn(n_theta, n_theta*8, n_y, seed=43, dropout_rate=0.25).to(device)
 model.train()
 
 loss_fn = nn.MSELoss()
@@ -197,7 +198,7 @@ y_train=y_train.to(device)
 X_test=X_test.to(device)
 y_test=y_test.to(device)
 
-def fit_v2(x, y, model, opt, loss_fn, epochs = 1000):
+def fit_v2(x, y, model, opt, loss_fn, epochs = 1500):
   
   for epoch in range(epochs):
     loss = loss_fn(model(x), y)
@@ -219,9 +220,17 @@ with torch.no_grad():
     pred = model(X_test)
     predicted = pred
     actual = y_test
+    
+#%% testing on training points
+model.eval()
+with torch.no_grad():
+    X_train = X_train.to(device)
+    pred = model(X_train)
+    predicted = pred
+    actual = y_train
 
 #%% sanity check plot, should be clustered around y=x 
-index = 1
+index = 38
 plt.figure()
 plt.title('NN Model Prediction Accuracy')
 plt.xlabel("Test Data (scaled)")
@@ -229,11 +238,11 @@ plt.ylabel("Model Predictions (scaled)")
 plt.scatter(actual.cpu().detach().numpy()[:,index],pred.cpu().detach().numpy()[:,index], s=5)
 
 #%%
-# losses = torch.zeros([n_y], dtype=torch.float32)
-# r_squareds = torch.zeros([n_y], dtype=torch.float32)
-# for output in range(n_y):
-#     r_squareds[output] = np.corrcoef(np.vstack((pred[:,output].cpu().detach().numpy(),actual[:,output].cpu().detach().numpy())))[0,1]
-#     losses[output] = torch.from_numpy(np.array([((pred[:,output].cpu().detach().numpy() - actual[:,output].cpu().detach().numpy())**2).mean(axis=0)]))
+losses = torch.zeros([n_y], dtype=torch.float32)
+r_squareds = torch.zeros([n_y], dtype=torch.float32)
+for output in range(n_y):
+    r_squareds[output] = np.corrcoef(np.vstack((pred[:,output].cpu().detach().numpy(),actual[:,output].cpu().detach().numpy())))[0,1]
+    losses[output] = torch.from_numpy(np.array([((pred[:,output].cpu().detach().numpy() - actual[:,output].cpu().detach().numpy())**2).mean(axis=0)]))
 
 #%% convert to real units
 actual_real = np.zeros((actual.shape[0],n_y))
@@ -254,7 +263,7 @@ plt.figure()
 plt.title(r'$R^{2}$ for each NN Output, in real units')
 plt.xlabel('Output Index')
 plt.ylabel(r'$R^{2}$' )
-plt.plot(r_squareds_real, 'o',markersize=5)
+plt.plot(r_squareds_real, 'o',markersize=2)
 plt.hlines(r_squareds_real.mean(),-5,n_y+5, color='gray',label='Average')
 plt.legend()
 #%%
@@ -262,7 +271,7 @@ plt.figure()
 plt.title("MSE Loss for each NN Output, in real units")
 plt.xlabel('Output Index')
 plt.ylabel('MSE')
-plt.plot(losses_real, '.')
+plt.plot(losses, '.')
 #%% compiling vector of losses for each output
 losses = torch.zeros([n_y], dtype=torch.float32)
 r_squareds = torch.zeros([n_y], dtype=torch.float32)
@@ -289,7 +298,7 @@ plt.hlines(r_squareds.mean(),-5,102, color='gray',label='Average = 0.986')
 plt.legend()
 
 #%% 
-index = 27
+index = 4
 plt.figure()
 plt.title('NN Model Prediction Accuracy, $R^{2} = $'+str(r_squareds[index].item())[:6])
 plt.xlabel("Test Data (scaled)")
