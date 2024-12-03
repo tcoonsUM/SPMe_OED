@@ -46,8 +46,8 @@ n_y = y.shape[1]
 #%% cleaning y data
 pos_inds = torch.tensor([0, 1, 3, 5, 8, 9, 12, 14, 15, 18, 20, 21, 24, 26]) #7 8 10 11 removed
 # original positive indices: 0, 1, 3, 5, 7(X), 9(-1), 10(X), 12(-4 from here onwards), 13, 16, 18, 19, 22, 24, 25, 28, 30
-n_stats = 31 # number of summary stats that are repeated (5 times)
-y_cleaned = y
+n_stats = 27 # number of summary stats that are repeated (5 times)
+y_cleaned = y.clone()
 for j in range(n_y):#range(n_y-1):
     # cleaning y data for large values, set them to 2*stdev from median
     thresh = 1e2
@@ -55,8 +55,8 @@ for j in range(n_y):#range(n_y-1):
     y_cleaned[np.where(y_cleaned[:,j].abs()>thresh),j] = quantile
     
     # apply logarithm to strictly positive indices
-    # if (pos_inds == np.remainder(j,31)).sum():
-    #     y_cleaned[:,j] = y_cleaned[:,j].log()
+    if (pos_inds == np.remainder(j,n_stats)).sum():
+        y_cleaned[:,j] = y_cleaned[:,j].log()
 
 #%% scale and test train split
 from sklearn.preprocessing import StandardScaler
@@ -230,7 +230,7 @@ with torch.no_grad():
     actual = y_train
 
 #%% sanity check plot, should be clustered around y=x 
-index = 38
+index = 6
 plt.figure()
 plt.title('NN Model Prediction Accuracy')
 plt.xlabel("Test Data (scaled)")
@@ -294,7 +294,7 @@ plt.title(r'$R^{2}$ for each NN Output')
 plt.xlabel('Output Index')
 plt.ylabel(r'$R^{2}$' )
 plt.plot(r_squareds, 'o',markersize=5)
-plt.hlines(r_squareds.mean(),-5,102, color='gray',label='Average = 0.986')
+plt.hlines(r_squareds.mean(),-5,n_y+5, color='gray',label='Average = 0.986')
 plt.legend()
 
 #%% 
