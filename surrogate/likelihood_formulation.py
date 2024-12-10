@@ -44,11 +44,11 @@ for j in range(n_y):
             y_cleaned[:,j] = np.log(y_cleaned[:,j])
 
 #%% computing relative stdevs for repeated stats
-rel_vars = np.zeros((n_stats,))
+rel_stds = np.zeros((n_stats,))
 for j in range(n_stats):
     j_inds = np.arange(j, j+n_stats*n_repeats, n_stats)
-    all_rel_vars = y_cleaned[:,j_inds].std(axis=1)/y_cleaned[:,j_inds].mean(axis=1)
-    rel_vars[j] = np.abs(all_rel_vars).mean()
+    all_rel_stds = y_cleaned[:,j_inds].std(axis=1)/y_cleaned[:,j_inds].mean(axis=1)
+    rel_stds[j] = np.abs(all_rel_stds).mean()
             
 #%% filling in NaN stats with similar stats' relative stdevs
 
@@ -56,16 +56,108 @@ for j in range(n_stats):
 nan_first_inds = np.array([1,2,3,4,5,6])
 for ind in nan_first_inds:
     next_inds = np.arange(ind+n_stats, ind+n_stats*n_repeats, n_stats)
-    all_rel_vars = y_cleaned[:,next_inds].std(axis=1)/y_cleaned[:,next_inds].mean(axis=1)
-    rel_vars[ind] = np.abs(all_rel_vars).mean()
+    all_rel_stds = y_cleaned[:,next_inds].std(axis=1)/y_cleaned[:,next_inds].mean(axis=1)
+    rel_stds[ind] = np.abs(all_rel_stds).mean()
    
 # index 8 can be computed from later instances of final V's within given repeat
 # 8 (final V) corresponds to 14 and 20
-rel_vars[8] = np.mean([rel_vars[14],rel_vars[20]])
+rel_stds[8] = np.mean([rel_stds[14],rel_stds[20]])
 
 # leaves 0 and 7, which have no repeats or anything
 # we will resort to the average relative stdev's of all other stats
-rel_vars[0] = rel_vars[8] = np.nanmean(rel_vars)
+rel_stds[0] = rel_stds[7] = np.nanmean(rel_stds)
+np.save("relative_stds.npy", rel_stds)
 
+#%% plotting results
+plt.rcParams['figure.dpi'] = 600
+plt.style.use('bmh')
 
+plt.bar(np.arange(0,n_stats),100*rel_stds)
+plt.xlabel("Stat Index")
+plt.ylabel("Relative Stdev (%)")
 
+#%% investigating correlation structures
+#y_simulated = y_cleaned.copy()
+# filling in with "identical" later stats
+# for ind in nan_first_inds:
+#     y_simulated[:,ind] = y_cleaned[:,ind+n_stats]
+
+# since we are only using correlations,
+# we replace all missing values with 0s and call them uncorrelated
+y_simulated = np.nan_to_num(y_cleaned)
+
+# correlation structure
+corr_test = np.abs(np.corrcoef(y_simulated.transpose()))
+corr_test = np.nan_to_num(corr_test)
+
+#%% counting up correlated stats
+corr_counter = []
+for i in range(n_y):
+    correlated_inds = np.where(corr_test[i,:]>0.9)[0]
+    if correlated_inds.shape[0] == 0:
+        correlated_inds = np.array([i])
+    corr_counter.append(correlated_inds)
+
+#%% manually determining correlated clusters of stats
+clusters = []
+clusters.append(np.array([9, 10, 11]))
+clusters.append(np.array([12,  14,  15,  16,  17,  18,  21,  22,  23,  26,  36,  37,  38,\
+         41,  42,  43,  44,  45,  53,  63,  64,  65,  68,  69,  72,  80,\
+         95, 122, 126, 129, 134]))
+clusters.append(np.array([28, 30, 32, 55, 57, 59, 84, 86, 111, 113, 114]))
+clusters.append(np.array([29, 31]))
+clusters.append(np.array([49, 50]))
+clusters.append(np.array([63, 64, 65]))
+clusters.append(np.array([70, 71]))
+clusters.append(np.array([75, 76, 77]))
+clusters.append(np.array([78, 79]))
+clusters.append(np.array([82, 84]))
+clusters.append(np.array([90, 91,  92,  99, 107, 123, 124, 125]))
+clusters.append(np.array([93, 94]))
+clusters.append(np.array([100, 101]))
+clusters.append(np.array([103, 104]))
+clusters.append(np.array([84, 86, 109, 111, 113, 114]))
+clusters.append(np.array([109, 111]))
+clusters.append(np.array([110, 112]))
+clusters.append(np.array([118, 119]))
+clusters.append(np.array([130, 131]))
+np.savez("clusters_list.npz", *clusters)
+
+#%% producing correlation matrices and saving
+corrs_clustered = []
+for cluster in clusters:
+    corrs_clustered.append(corr_test[:,cluster][cluster,:])
+np.savez("corrs_clustered_list.npz", *corrs_clustered)
+
+#%% can also be repeated with absolute, not relative, stdevs
+
+stds = np.zeros((n_stats,))
+for j in range(n_stats):
+    j_inds = np.arange(j, j+n_stats*n_repeats, n_stats)
+    all_stds = y_cleaned[:,j_inds].std(axis=1)
+    stds[j] = np.abs(all_stds).mean()
+            
+#%% filling in NaN stats with similar stats' relative stdevs
+
+# index 1, 2, 3, 4, 5, 6 can be computed using other repeats
+nan_first_inds = np.array([1,2,3,4,5,6])
+for ind in nan_first_inds:
+    next_inds = np.arange(ind+n_stats, ind+n_stats*n_repeats, n_stats)
+    all_stds = y_cleaned[:,next_inds].std(axis=1)
+    stds[ind] = np.abs(all_stds).mean()
+   
+# index 8 can be computed from later instances of final V's within given repeat
+# 8 (final V) corresponds to 14 and 20
+stds[8] = np.mean([stds[14],stds[20]])
+
+# leaves 0 and 7, which have no repeats or anything
+# we will resort to the average relative stdev's of all other stats
+stds[0] = stds[7] = np.nanmean(stds)
+
+#%% plotting results
+plt.rcParams['figure.dpi'] = 600
+plt.style.use('bmh')
+
+plt.bar(np.arange(0,n_stats),stds)
+plt.xlabel("Stat Index")
+plt.ylabel("Stdev")
