@@ -12,8 +12,54 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy import linalg as la
 import g as g_func
+from numba import njit, jit
+import time
+import multiprocessing
 
 def sample_prior(n_samps, seed=42):
+    # parameters are, in order:
+    # a_nmc, b_nmc, c_nmc, d_nmc (assumed independent)
+    # graphite_diff_parameter posterior
+    # ep_por, neg_por, pos_por
+    # cap_dl_neg
+    
+    np.random.seed(seed)
+    
+    sigma = np.array([[ 414.16743966, -439.53022219,  157.53082159,  -36.59908635], \
+            [-439.53022219,  475.21734538, -170.37237657,   41.13810463], \
+            [ 157.53082159, -170.37237657,   61.12237867,  -14.75655731], \
+            [ -36.59908635,   41.13810463,  -14.75655731,    3.8372772 ]])
+    mu = np.array([-2.29714210e+01, -1.23599647e-02, -1.09287243e+00,  1.62538939e+00])
+    #a_nmc, b_nmc, c_nmc, d_nmc = multivariate_normal.rvs(mu,sigma,size=n_samps)
+    nmc_coefs = np.random.multivariate_normal(mu, sigma, size=n_samps) # multivariate_normal.rvs(mu,sigma,size=n_samps)
+    # graphite_diff_parameter posterior from inference
+    stdev = np.sqrt(3.62066527e-05)
+    mu = 1.
+    graphite_diff_parameter = np.random.normal(mu, stdev, size=n_samps)[0] #norm.rvs(mu, stdev, size=n_samps)[0]
+    # sep_por, neg_por, pos_por
+    lb = 0.2
+    ub = 0.45
+    sep_por = np.random.uniform(lb,ub,size=n_samps)
+    neg_por = np.random.uniform(lb,ub,size=n_samps)
+    pos_por = np.random.uniform(lb,ub,size=n_samps)
+    
+    # cap_dl_neg
+    mu = 0.2
+    stdev = 0.05
+    cap_dl_neg = np.random.normal(mu, stdev, size=n_samps)[0] # norm.rvs(mu, stdev, size=1)[0]
+
+    samps_list = [nmc_coefs[:,0], nmc_coefs[:,1], nmc_coefs[:,2], nmc_coefs[:,3], 
+                  graphite_diff_parameter, sep_por, neg_por, pos_por, cap_dl_neg]
+ 
+    n_theta = len(samps_list)
+    samps = np.zeros((n_theta,n_samps))
+    
+    for i in range(n_theta):
+        samps[i,:] = samps_list[i]
+        
+    return samps
+
+def sample_prior_scipy(n_samps, seed=42):
     # parameters are, in order:
     # a_nmc, b_nmc, c_nmc, d_nmc (assumed independent)
     # graphite_diff_parameter posterior
@@ -56,7 +102,7 @@ def sample_prior(n_samps, seed=42):
         
     return samps
 
-def sample_epsilon(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
+def sample_epsilon(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=43):
     
     np.random.seed(seed)
     
@@ -88,11 +134,37 @@ def sample_epsilon(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitt
     
     return eps_samp, cov_all
 
-def eval_log_likelihood_mvn(y, g_eval, cov_all):
+def sample_epsilon_dict(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=44):
     
-    return multivariate_normal.logpdf(y-g_eval,cov=cov_all)
+    np.random.seed(seed)
     
-
+    n_stats = 27 # number of summary stats that are repeated
+    n_repeats = 5 # number of repeats
+    rel_stds = np.tile(rel_std, n_repeats)
+    
+    # construct large (sparse) covariance matrix
+    cov_all = np.diag(jitter*np.ones((n_stats*n_repeats,)))
+    all_inds = []
+    for key in clusters_inds_npz.keys():
+        inds = clusters_inds_npz[key]
+        all_inds+=inds.tolist()
+        sds = rel_stds[inds]*np.abs(g_eval[inds])
+        corr = corrs_clustered_npz[key]
+        # add contribution of correlated mvn to overall cov_all
+        cov_term = np.diag(sds) @ corr @ np.diag(sds)
+        for i in range(len(inds)):
+            cov_all[inds[i],inds] += cov_term[i,:]
+        
+    # add diagonal contributions to non-correlated stats
+    rem_inds = list(set(np.arange(n_stats*n_repeats)).difference(all_inds))
+    sds = rel_stds[rem_inds]*np.abs(g_eval[rem_inds])
+    cov_all[rem_inds,rem_inds] += sds**2
+    
+    my_generator = np.random.default_rng()
+    eps_samp = my_generator.multivariate_normal(np.zeros((n_stats*n_repeats,)), cov_all, method='cholesky')#multivariate_normal.rvs(cov=cov_all)
+    
+    return eps_samp, cov_all
+    
 def eval_log_likelihood(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
     
     n_y = y.shape[0]
@@ -130,17 +202,21 @@ def eval_log_likelihood(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_n
         sds = rel_stds[inds]*np.abs(g_eval[inds])
         corr = corrs_clustered_npz[key]
         logpdf += multivariate_normal.logpdf(eps[inds], 
-                                             cov = np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds),
-                                             allow_singular=False )
+                                            cov = np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds),
+                                            allow_singular=False )
+        # logpdf += logpdf_np(eps[inds], 
+        #                     np.zeros(len(inds)), 
+        #                     np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds))
     
     # the remaining indices are themselves the last cluster of independent gaussians
     rem_inds = list(set(np.arange(27*5)).difference(all_inds))
     sds = rel_stds[rem_inds]*np.abs(g_eval[rem_inds])
     logpdf += multivariate_normal.logpdf(eps[rem_inds], cov = np.diag(sds**2+jitter), allow_singular=False  )
+    #logpdf += np.sum(np.array([norm.logpdf(x, scale=np.sqrt(sd**2 + jitter)) for x, sd in zip(eps[rem_inds], sds)]))
     
     return logpdf
 
-def eval_log_likelihood_dict(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
+def eval_log_likelihood_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
     
     n_y = y.shape[0]
     n_stats = 27 # number of summary stats that are repeated
@@ -170,34 +246,158 @@ def eval_log_likelihood_dict(y, g_eval, rel_std, clusters_inds_npz, corrs_cluste
     # also keep track of which indices are part of a cluster
     logpdf = 0
     all_inds = []
-    for key in clusters_inds_npz.keys():
+    for cluster in range(n_clusters):
+        key = clusters_inds_npz.files[cluster]
         inds = clusters_inds_npz[key]
         all_inds+=inds.tolist()
         sds = rel_stds[inds]*np.abs(g_eval[inds])
         corr = corrs_clustered_npz[key]
-        logpdf += multivariate_normal.logpdf(eps[inds], 
-                                             cov = np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds),
-                                             allow_singular=False )
+        # logpdf += multivariate_normal.logpdf(eps[inds], 
+        #                                     cov = np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds),
+        #                                     allow_singular=False )
+        logpdf += logpdf_np(eps[inds], 
+                            np.zeros(len(inds)), 
+                            np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds))
     
     # the remaining indices are themselves the last cluster of independent gaussians
     rem_inds = list(set(np.arange(27*5)).difference(all_inds))
     sds = rel_stds[rem_inds]*np.abs(g_eval[rem_inds])
     logpdf += multivariate_normal.logpdf(eps[rem_inds], cov = np.diag(sds**2+jitter), allow_singular=False  )
+    #logpdf += np.sum(np.array([norm.logpdf(x, scale=np.sqrt(sd**2 + jitter)) for x, sd in zip(eps[rem_inds], sds)]))
     
     return logpdf
 
-import multiprocessing
+# def mvn_logpdf(obs, covariance, allow_singular=False):
+    
+#     return multivariate_normal.logpdf(obs, cov=covariance, allow_singular=allow_singular )
+
+def eval_log_likelihood_dict(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
+    
+    n_stats = 27 # number of summary stats that are repeated
+    n_repeats = 5 # number of repeats
+    
+    # Note: we define y as already having the log applied, so we can comment out below:
+    # clean data, apply log
+    y_cleaned = y.copy()
+    rel_stds = np.tile(rel_std, n_repeats)
+    
+    # compute g and eps, via y = g(theta, d) + eps
+    eps = y_cleaned - g_eval
+    
+    # compute likelihood as product of independent clusters (sum of logpdfs)
+    # also keep track of which indices are part of a cluster
+    logpdf = 0
+    all_inds = []
+    for key in clusters_inds_npz.keys():
+        inds = clusters_inds_npz[key]
+        all_inds+=inds.tolist()
+        sds = rel_stds[inds]*np.abs(g_eval[inds])
+        corr = corrs_clustered_npz[key]
+        # logpdf += multivariate_normal.logpdf(eps[inds], 
+        #                                      cov = np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds),
+        #                                      allow_singular=False )
+        logpdf += logpdf_np(eps[inds], 
+                            np.zeros(len(inds)), 
+                            np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds))
+    
+    # the remaining indices are themselves the last cluster of independent gaussians
+    rem_inds = list(set(np.arange(n_stats*n_repeats)).difference(all_inds))
+    sds = rel_stds[rem_inds]*np.abs(g_eval[rem_inds])
+    scales = np.sqrt(sds**2 + jitter)
+    #logpdf += np.sum(norm.logpdf_np(eps[rem_inds], scale=scales))#multivariate_normal.logpdf(eps[rem_inds], cov = np.diag(sds**2+jitter), allow_singular=False  ) #
+    logpdf += logpdf_np(eps[rem_inds], np.zeros(len(rem_inds)), np.diag(scales))
+    
+    #logpdf += multivariate_normal.logpdf(eps[rem_inds], cov = np.diag(sds**2+jitter), allow_singular=False  ) 
+    
+    return logpdf
+
+
+@njit(fastmath=True)
+def logpdf_np(x, mean, cov):
+    """
+    Log of the multivariate normal probability density function.
+
+    Args:
+        x (array-like): Value at which to evaluate the logpdf.
+        mean (array-like): Mean vector of the distribution.
+        cov (array-like): Covariance matrix of the distribution.
+
+    Returns:
+        float: Log of the PDF.
+    """
+    k = len(x)
+    x = np.asarray(x)
+    mean = np.asarray(mean)
+    cov = np.asarray(cov)
+
+    det_cov = np.linalg.det(cov)
+    if det_cov == 0:
+        raise ValueError("Covariance matrix is singular.")
+
+    inv_cov = np.linalg.inv(cov)
+
+    diff = x - mean
+    maha_dist = np.dot(np.dot(diff, inv_cov), diff)
+
+    log_pdf = -0.5 * (k * np.log(2 * np.pi) + np.log(det_cov) + maha_dist)
+    return log_pdf
+
+@njit(fastmath=True)
+def eval_log_likelihood_tuple_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, rem_inds, all_inds, jitter=1e-3):
+    
+    # n_stats = 27 # number of summary stats that are repeated
+    n_repeats = 5 # number of repeats
+    
+    # Note: we define y as already having the log applied, so we can comment out below:
+    # clean data, apply log
+    y_cleaned = y.copy()
+    #rel_stds = np.tile(rel_std, n_repeats)
+    rel_stds = np.repeat(rel_std,n_repeats).reshape(-1,n_repeats).T.flatten()
+    
+    # compute g and eps, via y = g(theta, d) + eps
+    eps = y_cleaned - g_eval
+    
+    # compute likelihood as product of independent clusters (sum of logpdfs)
+    # also keep track of which indices are part of a cluster
+    logpdf = 0
+    # all_inds = []
+    # for key in clusters_inds_npz.keys():
+    #    inds = clusters_inds_npz[key]
+    #    corr = corrs_clustered_npz[key]
+    n_clusters = len(clusters_inds_npz)
+    for i in range(n_clusters): #inds, corr in zip(clusters_inds_npz, corrs_clustered_npz): 
+        inds = clusters_inds_npz[i]
+        corr = corrs_clustered_npz[i]
+        # all_inds+=inds.tolist()
+        sds = rel_stds[inds]*np.abs(g_eval[inds])
+        # logpdf += multivariate_normal.logpdf(eps[inds], 
+        #                                      cov = np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds),
+        #                                      allow_singular=False )
+        logpdf += logpdf_np(eps[inds], 
+                            np.zeros(len(inds)), 
+                            np.diag(jitter*np.ones((len(inds),))) + np.diag(sds) @ corr @ np.diag(sds))
+    
+    # the remaining indices are themselves the last cluster of independent gaussians
+    # rem_inds = list(set(np.arange(n_stats*n_repeats)).difference(all_inds))
+    # rem_inds = np.array(rem_inds)
+    sds = rel_stds[rem_inds]*np.abs(g_eval[rem_inds])
+    scales = np.sqrt(sds**2 + jitter)
+    #logpdf += np.sum(norm.logpdf_np(eps[rem_inds], scale=scales))#multivariate_normal.logpdf(eps[rem_inds], cov = np.diag(sds**2+jitter), allow_singular=False  ) #
+    logpdf += logpdf_np(eps[rem_inds], np.zeros(len(rem_inds)), np.diag(scales))
+    
+    #logpdf += multivariate_normal.logpdf(eps[rem_inds], cov = np.diag(sds**2+jitter), allow_singular=False  ) 
+    
+    return logpdf
 
 # Worker function to compute utility for a specific i
-def utility_with_reuse_worker(i, y_vals, model_evals, n_in, rel_std, clusters_inds_dict, corrs_clustered_dict):
+def utility_with_reuse_worker(i, y_vals, model_evals, n_in, rel_std, clusters_inds_tuple, corrs_clustered_tuple, rem_inds, all_inds):
     evidence = 0
     log_likelihood_ij_same = 0
 
     # Inner loop: process all j for a given i
     for j in range(n_in):
-        log_likelihood = eval_log_likelihood_dict(
-            y_vals[i, :], model_evals[j, :], rel_std, clusters_inds_dict, corrs_clustered_dict
-        )
+        log_likelihood = eval_log_likelihood_tuple_numba(
+            y_vals[i, :], model_evals[j, :], rel_std, clusters_inds_tuple, corrs_clustered_tuple, rem_inds, all_inds )
         evidence += np.exp(log_likelihood)
         if i == j:
             log_likelihood_ij_same = log_likelihood
@@ -211,20 +411,32 @@ def utility_with_reuse_mp(y_vals, model_evals, n_in, n_out, rel_std, clusters_in
     # Convert npz files to serializable dictionaries
     clusters_inds_dict = {key: clusters_inds_npz[key] for key in clusters_inds_npz.files}
     corrs_clustered_dict = {key: corrs_clustered_npz[key] for key in corrs_clustered_npz.files}
+    clusters_inds_tuple = tuple(clusters_inds_dict.values())
+    corrs_clustered_tuple = tuple(corrs_clustered_dict.values())
+    
+    rem_inds = np.load("rem_inds.npy")
+    all_inds = np.load("all_inds.npy")
 
     # Create a pool of workers
-    n_workers = n_workers or multiprocessing.cpu_count()-1
-    print(n_workers)
-    test_list = [(i, y_vals, model_evals, n_in, rel_std, clusters_inds_dict, corrs_clustered_dict) for i in range(n_out)]
-    utility_with_reuse_worker(test_list[0])
+    n_workers = n_workers or multiprocessing.cpu_count()-2
+    print("Number of cores in use: "+str(n_workers))
+
     with multiprocessing.Pool(n_workers) as pool:
         # Parallelize the outer loop
         results = pool.starmap(
             utility_with_reuse_worker,
-            [(i, y_vals, model_evals, n_in, rel_std, clusters_inds_dict, corrs_clustered_dict) for i in range(n_out)]
+            [(i, y_vals, model_evals, n_in, rel_std, clusters_inds_tuple, corrs_clustered_tuple, rem_inds, all_inds) for i in range(n_out)]
         )
 
     return np.array(results)
+
+def sample_task(i, g_evals, rel_std, clusters_inds_dict, corrs_clustered_dict, jitter):
+    """Worker function for parallel execution."""
+    #print(f"Processing sample_task for i={i}")
+    eps, _ = sample_epsilon_dict(
+        g_evals, rel_std, clusters_inds_dict, corrs_clustered_dict, jitter )
+    #print(f"Completed task {i}")
+    return g_evals + eps
 
 def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
     
@@ -235,6 +447,7 @@ def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitt
     # convert inputs to appropriate torch tensors
     # d will be the same (repeats), theta will be n_in/n_out new samples
     thetas = torch.tensor(sample_prior(n_in, seed).T)
+    
     if not torch.is_tensor(d):
         d = torch.tensor(d)
     d_repeats = d.repeat(n_in,1)
@@ -247,11 +460,39 @@ def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitt
     
     # add noise to sample y_vals
     y_vals = np.zeros((n_in, n_y))
-    for i in range(n_in):
-        eps, eps_cov = sample_epsilon(g_evals[i,:], rel_std, clusters_inds_npz, corrs_clustered_npz, jitter)
-        y_vals[i,:] = g_evals[i,:] + eps
-        
+    
+    # convert npz files to dicts
+    clusters_inds_dict = {key: clusters_inds_npz[key] for key in clusters_inds_npz.files}
+    corrs_clustered_dict = {key: corrs_clustered_npz[key] for key in corrs_clustered_npz.files}
+
+    print("starting sampling epsilon loop")
+    start_time = time.time()
+    # for i in range(n_in):
+    #     eps, _ = sample_epsilon_dict(g_evals[i,:], rel_std, clusters_inds_npz, corrs_clustered_npz, jitter)
+    #     y_vals[i,:] = g_evals[i,:] + eps
+    
+    # set n_workers
+    n_workers = multiprocessing.cpu_count()-2
+    # print("n_workers = "+str(n_workers))
+    
+    # sample epsilon in parallel
+    with multiprocessing.get_context("spawn").Pool(1) as pool:
+        y_vals_list = pool.starmap( sample_task, 
+                                   [(i, g_evals[i,:], rel_std, clusters_inds_dict, corrs_clustered_dict, jitter) for i in range(n_in)] )
+
+    
+    # Convert the list of arrays back to a NumPy array
+    y_vals = np.vstack(y_vals_list)
+    
+    stop_time = time.time()
+    dur = stop_time-start_time
+    print("dur for sample eps: " +str(dur))
+    
+    start_time = time.time()
     eig = utility_with_reuse_mp(y_vals, g_evals, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz)
+    stop_time = time.time()
+    dur = stop_time-start_time
+    print("dur for eig " +str(dur))
     
     return eig
 
@@ -302,51 +543,55 @@ def eig(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=
     
     return eig
 
-def utility_with_reuse_mvn(y_vals, model_evals, n_in, n_out, eps_covs):
-    u_d = np.zeros((n_out,))
-    assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
-    for i in range(n_out):
-        # if i%20==0:
-        #     print(i)
-        evidence = 0
-        
-        for j in range(n_in):   
-            log_likelihood = eval_log_likelihood_mvn(y_vals[i,:], model_evals[j,:], eps_covs[i,:,:])#(y_vals[j,:], model_evals[j,:], eps_mean, eps_cov)
-            evidence += np.exp(log_likelihood)
-            if i==j:
-                log_likelihood_ij_same = log_likelihood
-            
-        evidence /= n_in
-        u_d[i] += log_likelihood_ij_same - np.log(evidence)
-    return u_d
+# def eval_log_likelihood_mvn(y, g_eval, cov_all):
+    
+#     return multivariate_normal.logpdf(y-g_eval,cov=cov_all)
 
-def eig_mvn(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
-    
-    n_y = 135
-    assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
-    
-    # first run g_evals via g_func.g
-    # convert inputs to appropriate torch tensors
-    # d will be the same (repeats), theta will be n_in/n_out new samples
-    thetas = torch.tensor(sample_prior(n_in, seed).T)
-    if not torch.is_tensor(d):
-        d = torch.tensor(d)
-    d_repeats = d.repeat(n_in,1)
-    
-    # torch.tensor concatenation
-    X = torch.cat((thetas, d_repeats), dim=1)
-    
-    # run nn surrogate
-    g_evals = g_func.g(X).detach().numpy()
-    
-    # add noise to sample y_vals
-    y_vals = np.zeros((n_in, n_y))
-    eps_covs = np.zeros((n_in, n_y, n_y))
-    for i in range(n_in):
-        eps, eps_cov = sample_epsilon(g_evals[i,:], rel_std, clusters_inds_npz, corrs_clustered_npz, jitter)
-        y_vals[i,:] = g_evals[i,:] + eps
-        eps_covs[i, :, :] = eps_cov
+# def utility_with_reuse_mvn(y_vals, model_evals, n_in, n_out, eps_covs):
+#     u_d = np.zeros((n_out,))
+#     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
+#     for i in range(n_out):
+#         # if i%20==0:
+#         #     print(i)
+#         evidence = 0
         
-    eig = utility_with_reuse_mvn(y_vals, g_evals, n_in, n_out, eps_covs)
+#         for j in range(n_in):   
+#             log_likelihood = eval_log_likelihood_mvn(y_vals[i,:], model_evals[j,:], eps_covs[i,:,:])#(y_vals[j,:], model_evals[j,:], eps_mean, eps_cov)
+#             evidence += np.exp(log_likelihood)
+#             if i==j:
+#                 log_likelihood_ij_same = log_likelihood
+            
+#         evidence /= n_in
+#         u_d[i] += log_likelihood_ij_same - np.log(evidence)
+#     return u_d
+
+# def eig_mvn(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
     
-    return eig
+#     n_y = 135
+#     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
+    
+#     # first run g_evals via g_func.g
+#     # convert inputs to appropriate torch tensors
+#     # d will be the same (repeats), theta will be n_in/n_out new samples
+#     thetas = torch.tensor(sample_prior(n_in, seed).T)
+#     if not torch.is_tensor(d):
+#         d = torch.tensor(d)
+#     d_repeats = d.repeat(n_in,1)
+    
+#     # torch.tensor concatenation
+#     X = torch.cat((thetas, d_repeats), dim=1)
+    
+#     # run nn surrogate
+#     g_evals = g_func.g(X).detach().numpy()
+    
+#     # add noise to sample y_vals
+#     y_vals = np.zeros((n_in, n_y))
+#     eps_covs = np.zeros((n_in, n_y, n_y))
+#     for i in range(n_in):
+#         eps, eps_cov = sample_epsilon(g_evals[i,:], rel_std, clusters_inds_npz, corrs_clustered_npz, jitter)
+#         y_vals[i,:] = g_evals[i,:] + eps
+#         eps_covs[i, :, :] = eps_cov
+        
+#     eig = utility_with_reuse_mvn(y_vals, g_evals, n_in, n_out, eps_covs)
+    
+#     return eig
