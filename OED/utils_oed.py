@@ -149,6 +149,36 @@ def utility_with_reuse_mp_cov(y_vals, model_evals, n_in, n_out, cov_all, n_worke
 
     return np.array(results)
 
+import dask
+from dask.distributed import Client
+
+def utility_with_reuse_mp_cov_dask(y_vals, model_evals, n_in, n_out, cov_all):
+    """
+    Calculates utility with reuse using Dask for parallelization.
+
+    Args:
+        y_vals: 
+        model_evals: 
+        n_in: 
+        n_out: 
+        cov_all: 
+
+    Returns:
+        An array of results.
+    """
+
+    # Create a Dask client
+    client = Client(n_workers=multiprocessing.cpu_count()-2) 
+
+    # Create a list of delayed functions
+    delayed_results = [dask.delayed(utility_with_reuse_worker_cov)(i, y_vals, model_evals, n_in, cov_all) for i in range(n_out)]
+
+    # Compute the results using Dask
+    results = client.compute(delayed_results)
+    results = client.gather(results) 
+
+    return np.array(results)
+
 def eig_mp_cov(d, n_in, n_out, cov_all, jitter=1e-3, seed=42):
     
     n_y = 135
@@ -181,7 +211,7 @@ def eig_mp_cov(d, n_in, n_out, cov_all, jitter=1e-3, seed=42):
     #     y_vals[i,:] = g_evals[i,:] + eps
     
     start_time = time.time()
-    eig = utility_with_reuse_mp_cov(y_vals, g_evals, n_in, n_out, cov_all)
+    eig = utility_with_reuse_mp_cov_dask(y_vals, g_evals, n_in, n_out, cov_all)
     stop_time = time.time()
     dur = stop_time-start_time
     print("dur for eig " +str(dur))
