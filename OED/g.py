@@ -55,7 +55,7 @@ def g(x):
         return Y_pred
     
     model = feed_forward_bn(n_x, n_x*8, n_y, seed=43, dropout_rate=0.25).to(device)
-    model.load_state_dict(torch.load("model_state_dict.pt", weights_only=False))
+    model.load_state_dict(torch.load("model_state_dict.pt", weights_only=False, map_location=device))
     
     # scale x data
     X_scaled = torch.zeros(x.shape)

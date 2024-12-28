@@ -16,9 +16,12 @@ import g
 import time
 from bayes_opt import BayesianOptimization
 from scipy.optimize import NonlinearConstraint
+import warnings
+from sklearn.exceptions import InconsistentVersionWarning
 
 if __name__ == '__main__':    
-        #% load in files
+    #% load in files
+    warnings.filterwarnings(action='ignore', category=InconsistentVersionWarning)
     x_scalers_npz = np.load("x_scalers.npz")
     y_scalers_npz = np.load("y_scalers.npz")
     corrs_clustered_npz = np.load("corrs_clustered_list.npz")
