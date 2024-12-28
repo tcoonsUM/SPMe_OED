@@ -141,7 +141,7 @@ def logpdf_np_chol(x, mean, L):
     return log_pdf
 
 @njit(fastmath=True)
-def eval_log_likelihood_cov_numba_prime(y, g_eval, L, jitter=1e-3):
+def eval_log_likelihood_cov_numba_prime(y, g_eval, L, jitter=1e-4):
     
     # compute g and eps, via y = g(theta, d) * (1 + eps)
     eps = (y - g_eval)/g_eval 
@@ -190,6 +190,7 @@ def utility_with_reuse_mp_cov(y_vals, model_evals, n_in, n_out, cov_all, n_worke
     return np.array(results)
 
 import dask
+import dask.array as da
 from dask.distributed import Client
 
 def utility_with_reuse_mp_cov_dask(y_vals, model_evals, n_in, n_out, cov_all):
@@ -222,7 +223,7 @@ def utility_with_reuse_mp_cov_dask(y_vals, model_evals, n_in, n_out, cov_all):
 
     return np.array(results)
 
-def eig_mp_cov(d, n_in, n_out, cov_all, jitter=1e-3, seed=42):
+def eig_mp_cov(d, n_in, n_out, cov_all, jitter=1e-4, seed=42):
     
     n_y = 135
     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
@@ -242,16 +243,9 @@ def eig_mp_cov(d, n_in, n_out, cov_all, jitter=1e-3, seed=42):
     # run nn surrogate
     g_evals = g_func.g(X).detach().numpy()
     
-    # add noise to sample y_vals
-    y_vals = np.zeros((n_in, n_y))
-    
     # sample epsilon not in parallel
     eps_all = sample_epsilon_prime_cov(cov_all, n_samps=n_out, seed=seed)
     y_vals = g_evals * (np.ones(eps_all.shape) +  eps_all)
-
-    # for i in range(n_in):
-    #     eps, eps_cov = sample_epsilon_dict(g_evals[i,:], rel_std, clusters_inds_dict, corrs_clustered_dict, jitter)
-    #     y_vals[i,:] = g_evals[i,:] + eps
     
     start_time = time.time()
     eig = utility_with_reuse_mp_cov_dask(y_vals, g_evals, n_in, n_out, cov_all)
@@ -305,7 +299,7 @@ def sample_prior_scipy(n_samps, seed=42):
         
     return samps
 
-def sample_epsilon(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=43):
+def sample_epsilon(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4, seed=43):
     
     np.random.seed(seed)
     
@@ -337,7 +331,7 @@ def sample_epsilon(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitt
     
     return eps_samp, cov_all
 
-def sample_epsilon_dict(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, my_generator, jitter=1e-3, seed=44):
+def sample_epsilon_dict(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, my_generator, jitter=1e-4, seed=44):
     
     np.random.seed(seed)
     
@@ -369,7 +363,7 @@ def sample_epsilon_dict(g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz,
     
     return eps_samp, cov_all
 
-def sample_epsilon_prime_dict(rel_std, clusters_inds_npz, corrs_clustered_npz, my_generator, n_samps=1, jitter=1e-3, seed=44):
+def sample_epsilon_prime_dict(rel_std, clusters_inds_npz, corrs_clustered_npz, my_generator, n_samps=1, jitter=1e-4, seed=44):
     
     np.random.seed(seed)
     
@@ -399,7 +393,7 @@ def sample_epsilon_prime_dict(rel_std, clusters_inds_npz, corrs_clustered_npz, m
     
     return eps_samp, cov_all
     
-def eval_log_likelihood(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
+def eval_log_likelihood(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4):
     
     n_y = y.shape[0]
     n_stats = 27 # number of summary stats that are repeated
@@ -450,7 +444,7 @@ def eval_log_likelihood(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_n
     
     return logpdf
 
-def eval_log_likelihood_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
+def eval_log_likelihood_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4):
     
     n_y = y.shape[0]
     n_stats = 27 # number of summary stats that are repeated
@@ -505,7 +499,7 @@ def eval_log_likelihood_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clust
     
 #     return multivariate_normal.logpdf(obs, cov=covariance, allow_singular=allow_singular )
 
-def eval_log_likelihood_dict(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3):
+def eval_log_likelihood_dict(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4):
     
     n_stats = 27 # number of summary stats that are repeated
     n_repeats = 5 # number of repeats
@@ -546,7 +540,7 @@ def eval_log_likelihood_dict(y, g_eval, rel_std, clusters_inds_npz, corrs_cluste
     return logpdf
 
 @njit(fastmath=True)
-def eval_log_likelihood_tuple_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, rem_inds, all_inds, jitter=1e-3):
+def eval_log_likelihood_tuple_numba(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, rem_inds, all_inds, jitter=1e-4):
     
     # n_stats = 27 # number of summary stats that are repeated
     n_repeats = 5 # number of repeats
@@ -593,7 +587,7 @@ def eval_log_likelihood_tuple_numba(y, g_eval, rel_std, clusters_inds_npz, corrs
     return logpdf
 
 @njit(fastmath=True)
-def eval_log_likelihood_tuple_numba_prime(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, rem_inds, all_inds, jitter=1e-3):
+def eval_log_likelihood_tuple_numba_prime(y, g_eval, rel_std, clusters_inds_npz, corrs_clustered_npz, rem_inds, all_inds, jitter=1e-4):
     
     # n_stats = 27 # number of summary stats that are repeated
     n_repeats = 5 # number of repeats
@@ -694,7 +688,7 @@ def sample_task(i, g_evals, rel_std, clusters_inds_dict, corrs_clustered_dict, j
     #print(f"Completed task {i}")
     return g_evals + eps
 
-def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
+def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4, seed=42):
     
     n_y = 135
     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
@@ -780,7 +774,7 @@ def utility_with_reuse(y_vals, model_evals, n_in, n_out, rel_std, clusters_inds_
         u_d[i] += log_likelihood_ij_same - np.log(evidence)
     return u_d
 
-def eig(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
+def eig(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4, seed=42):
     
     n_y = 135
     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"
@@ -831,7 +825,7 @@ def eig(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=
 #         u_d[i] += log_likelihood_ij_same - np.log(evidence)
 #     return u_d
 
-# def eig_mvn(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3, seed=42):
+# def eig_mvn(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-4, seed=42):
     
 #     n_y = 135
 #     assert n_in==n_out, "n_in and n_out must take the same value for sample reuse"

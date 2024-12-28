@@ -27,7 +27,7 @@ if __name__ == '__main__':
     corrs_clustered_npz = np.load("corrs_clustered_list.npz")
     clusters_inds_npz = np.load("clusters_list.npz") # can access keywords via clusters_npz.files    
     rel_std = np.load("relative_stds.npy")
-    cov_all = np.load("cov_all.npy")
+    cov_all = cov_all4#np.load("cov_all_1e-5.npy")
     
     # for testing only
     y_test = np.load("y_cleaned.npy")
@@ -57,15 +57,15 @@ if __name__ == '__main__':
 
     # uncomment to perform N_nmc pilot study
     
-    num_tests = 20
+    num_tests = 21
     utilities_list = []
     uds = np.zeros((num_tests,))
     ud_vars = np.zeros((num_tests,))
     durs = np.zeros((num_tests,))
-    n_tests = np.linspace(10,1000,num_tests)#np.logspace(2, 3, num_tests)#np.linspace(100,1000,num_tests)
+    n_tests = np.linspace(100,8100,num_tests)#np.logspace(2, 3, num_tests)#np.linspace(100,1000,num_tests)
     jitter=1e-3
     i=0
-    for n_test in [5001]:#n_tests:
+    for n_test in n_tests:
         n_test_int = int(n_test)
         print("Now running for n_test: "+str(n_test_int))
         start_time = time.time()
