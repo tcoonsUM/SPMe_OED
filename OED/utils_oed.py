@@ -102,24 +102,63 @@ def logpdf_np(x, mean, cov):
     return log_pdf
 
 @njit(fastmath=True)
-def eval_log_likelihood_cov_numba_prime(y, g_eval, cov_all, jitter=1e-3):
+def solve_triangular_numba(L, b):
+    """Solves L @ x = b for lower-triangular matrix L."""
+    n = L.shape[0]
+    x = np.empty_like(b)
+    for i in range(n):
+        x[i] = b[i]
+        for j in range(i):
+            x[i] -= L[i, j] * x[j]
+        x[i] /= L[i, i]
+    return x
+
+@njit(fastmath=True)
+def logpdf_np_chol(x, mean, L):
+    """
+    Log of the multivariate normal probability density function using Cholesky decomposition.
+
+    Args:
+        x (array-like): Value at which to evaluate the logpdf.
+        mean (array-like): Mean vector of the distribution.
+        L (array-like): Cholesky factor of the covariance matrix (L @ L.T = cov).
+
+    Returns:
+        float: Log of the PDF.
+    """
+    k = len(x)
+    x = np.asarray(x)
+    mean = np.asarray(mean)
+
+    diff = x - mean
+    # Solve for v in L @ v = diff
+    v = solve_triangular_numba(L, diff)  #solve(L, diff) 
+    maha_dist = np.sum(v * v)  # Equivalent to v.T @ v
+
+    log_det_cov = 2 * np.sum(np.log(np.diag(L)))  # Log-determinant of cov = 2 * sum(log(diag(L)))
+
+    log_pdf = -0.5 * (k * np.log(2 * np.pi) + log_det_cov + maha_dist)
+    return log_pdf
+
+@njit(fastmath=True)
+def eval_log_likelihood_cov_numba_prime(y, g_eval, L, jitter=1e-3):
     
     # compute g and eps, via y = g(theta, d) * (1 + eps)
     eps = (y - g_eval)/g_eval 
     
-    logpdf = logpdf_np(eps, np.zeros(eps.shape), cov_all)
+    logpdf = logpdf_np_chol(eps, np.zeros(eps.shape), L)
     
     return logpdf
 
 # Worker function to compute log-ratio of likelihood to evidence (utility) for a specific i
 @njit(fastmath=True)
-def utility_with_reuse_worker_cov(i, y_vals, model_evals, n_in, cov_all):
+def utility_with_reuse_worker_cov(i, y_vals, model_evals, n_in, L):
     evidence = 0
     log_likelihood_ij_same = 0
 
     # Inner loop: process all j for a given i
     for j in range(n_in):
-        log_likelihood = eval_log_likelihood_cov_numba_prime(y_vals[i, :], model_evals[j, :], cov_all)
+        log_likelihood = eval_log_likelihood_cov_numba_prime(y_vals, model_evals[j, :], L)
         evidence += np.exp(log_likelihood)
         if i == j:
             log_likelihood_ij_same = log_likelihood
@@ -134,17 +173,18 @@ def utility_with_reuse_mp_cov(y_vals, model_evals, n_in, n_out, cov_all, n_worke
     # Create a pool of workers
     n_workers = n_workers or multiprocessing.cpu_count()-2
     print("Number of cores in use: "+str(n_workers))
+    L = np.linalg.cholesky(cov_all)
     
     # for debugging only
     # results2 = []
     # for i in range(n_out):
-    #     results2.append(utility_with_reuse_worker(i,y_vals, model_evals, n_in, rel_std, clusters_inds_tuple, corrs_clustered_tuple, rem_inds, all_inds))
+    #     results2.append(utility_with_reuse_worker_cov(i, y_vals[i,:], model_evals, n_in, L))
 
     with multiprocessing.Pool(n_workers) as pool:
         # Parallelize the outer loop
         results = pool.starmap(
             utility_with_reuse_worker_cov,
-            [(i, y_vals, model_evals, n_in, cov_all) for i in range(n_out)]
+            [(i, y_vals[i,:], model_evals, n_in, L) for i in range(n_out)]
         )
 
     return np.array(results)
@@ -171,11 +211,14 @@ def utility_with_reuse_mp_cov_dask(y_vals, model_evals, n_in, n_out, cov_all):
     client = Client(n_workers=multiprocessing.cpu_count()-2) 
 
     # Create a list of delayed functions
-    delayed_results = [dask.delayed(utility_with_reuse_worker_cov)(i, y_vals, model_evals, n_in, cov_all) for i in range(n_out)]
+    L = np.linalg.cholesky(cov_all)
+    delayed_results = [dask.delayed(utility_with_reuse_worker_cov)(i, y_vals[i,:], model_evals, n_in, L) for i in range(n_out)]
 
     # Compute the results using Dask
     results = client.compute(delayed_results)
     results = client.gather(results) 
+    
+    client.close() 
 
     return np.array(results)
 

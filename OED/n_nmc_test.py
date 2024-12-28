@@ -62,7 +62,7 @@ if __name__ == '__main__':
     n_tests = np.linspace(10,1000,num_tests)#np.logspace(2, 3, num_tests)#np.linspace(100,1000,num_tests)
     jitter=1e-3
     i=0
-    for n_test in [100]:#n_tests:
+    for n_test in [5001]:#n_tests:
         n_test_int = int(n_test)
         print("Now running for n_test: "+str(n_test_int))
         start_time = time.time()
