@@ -27,7 +27,7 @@ if __name__ == '__main__':
     corrs_clustered_npz = np.load("corrs_clustered_list.npz")
     clusters_inds_npz = np.load("clusters_list.npz") # can access keywords via clusters_npz.files    
     rel_std = np.load("relative_stds.npy")
-    cov_all = cov_all4#np.load("cov_all_1e-5.npy")
+    cov_all = np.load("cov_1e-6.npy")#-np.diag(np.ones(135)*1e-4)+np.diag(np.ones(135)*1e-7)#"ov_all_1e-5.npy")#+np.diag(np.ones(135)*1e-4)
     
     # for testing only
     y_test = np.load("y_cleaned.npy")
@@ -44,9 +44,9 @@ if __name__ == '__main__':
     lb = np.array([0.1, 36.  , 100., 0.1,  1.,  10., 0.001, 25.  ])
     ub = np.array([2. , 3600., 1800, 2. , 20., 600., 0.01 , 1000.])
     
-    d_test = ((lb+ub)/2).reshape(1,-1)
-    d_test[0,1] = d_test[0,0]*120 # d1 must be in [72/d0, 360/d0]
-    d_test[0,7] = d_test[0,6]*0.67 # d7 must be in [.25/d6, 1/d6]
+    d_test = ((lb+ub)/1.5).reshape(1,-1)
+    d_test[0,1] = 200/d_test[0,0]#80#200 # d1 must be in [72/d0, 360/d0]
+    d_test[0,7] = .9/d_test[0,6]#.3#0.9 # d7 must be in [.25/d6, 1/d6]
     #%
     # n_test=100
     # thetas_test = torch.tensor(ute.sample_prior(n_test).T)
@@ -57,20 +57,19 @@ if __name__ == '__main__':
 
     # uncomment to perform N_nmc pilot study
     
-    num_tests = 21
+    num_tests = 31
     utilities_list = []
     uds = np.zeros((num_tests,))
     ud_vars = np.zeros((num_tests,))
     durs = np.zeros((num_tests,))
-    n_tests = np.linspace(100,8100,num_tests)#np.logspace(2, 3, num_tests)#np.linspace(100,1000,num_tests)
-    jitter=1e-3
+    n_tests = np.linspace(100,2100,num_tests)#np.logspace(2, 3, num_tests)#np.linspace(100,1000,num_tests)
     i=0
     for n_test in n_tests:
         n_test_int = int(n_test)
         print("Now running for n_test: "+str(n_test_int))
         start_time = time.time()
         #utilities = ute.eig_mp(d_test, n_test_int, n_test_int, rel_std, clusters_inds_npz, corrs_clustered_npz, jitter=1e-3)
-        utilities = ute.eig_mp_cov(d_test, n_test_int, n_test_int, cov_all, jitter=jitter)
+        utilities = ute.eig_mp_cov(d_test, n_test_int, n_test_int, cov_all, seed=2)
         stop_time = time.time()
         dur = stop_time-start_time
         print("EIG = "+str(utilities.mean()))
@@ -81,8 +80,22 @@ if __name__ == '__main__':
         durs[i] = dur
         i+=1
         
+    plt.plot(n_tests, uds); plt.xlabel(r'$N$'); plt.ylabel(r'$U(d)$'); plt.title('NMC EIG Convergence')
 
-
+    #%%
+    uds = [np.load("ud_cov1e-4.npy"), np.load("ud_cov1e-5.npy"),
+           np.load("ud_cov1e-6.npy"), np.load("ud_cov1e-7.npy"),
+           np.load("ud_cov1e-8.npy")]
+    
+    labels = ["1e-4", "1e-5", "1e-6", "1e-7", "1e-8"]
+    
+    fig, ax = plt.subplots()
+    for i in range(len(uds)):
+        ax.plot(n_tests, uds[i], label=labels[i])
+    ax.legend()
+    ax.set_title("NMC convergence for various jitter magnitudes")
+    ax.set_xlabel(r'$N$')
+    ax.set_ylabel(r'$\hat{U}_{N}(d)$')
     # #%% test functions in utils
     
     # import time

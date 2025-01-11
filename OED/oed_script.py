@@ -10,7 +10,7 @@ import numpy as np
 from scipy import stats
 import os
 import matplotlib.pyplot as plt
-import utils as ute
+import utils_oed as ute
 import torch
 import g
 import time
@@ -41,8 +41,8 @@ if __name__ == '__main__':
     y_test = np.load("y_cleaned.npy")
     
     #% define OED parameters
-    n_in = 1e4
-    n_out = 1e4
+    n_in = int(1e2)
+    n_out = int(1e2)
     n_theta = 8
     n_y = 135
     
@@ -53,8 +53,8 @@ if __name__ == '__main__':
     ub = np.array([2. , 3600., 1800, 2. , 20., 600., 0.01 , 1000.])
     
     d_test = ((lb+ub)/2).reshape(1,-1)
-    d_test[0,1] = d_test[0,0]*120 # d1 must be in [72/d0, 360/d0]
-    d_test[0,7] = d_test[0,6]*0.67 # d7 must be in [.25/d6, 1/d6]
+    d_test[0,1] = 120/d_test[0,0] # d1 must be in [72/d0, 360/d0]
+    d_test[0,7] = 0.67/d_test[0,6] # d7 must be in [.25/d6, 1/d6]
     
     pbounds = { 'd0': (lb[0], ub[0]),
                 'd1': (lb[1], ub[1]),
@@ -83,15 +83,14 @@ if __name__ == '__main__':
         f=lambda d0, d1, d2, d3, d4, d5, d6, d7: 
             bo_friendly_objective(d0, d1, d2, d3, d4, d5, d6, d7, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz),
         constraint=constraint,
+        acquisition_function=acq,
         pbounds=pbounds,
-        verbose=verbose, # verbose = 1 prints only when a maximum is observed, verbose = 0 is silent
         random_state=random_state,
         )
         
     optimizer.maximize(
         init_points=init_points,
         n_iter=n_iter,
-        acquisition=acq
         )
     
     # NOTE: eig_mp expects d in shape [1,8] as an np.array or tensor

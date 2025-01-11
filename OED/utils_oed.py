@@ -15,6 +15,7 @@ import g as g_func
 from numba import njit, jit
 import time
 import multiprocessing
+import math
 
 def sample_prior(n_samps, seed=42):
     # parameters are, in order:
@@ -141,7 +142,7 @@ def logpdf_np_chol(x, mean, L):
     return log_pdf
 
 @njit(fastmath=True)
-def eval_log_likelihood_cov_numba_prime(y, g_eval, L, jitter=1e-4):
+def eval_log_likelihood_cov_numba_prime(y, g_eval, L):
     
     # compute g and eps, via y = g(theta, d) * (1 + eps)
     eps = (y - g_eval)/g_eval 
@@ -159,13 +160,27 @@ def utility_with_reuse_worker_cov(i, y_vals, model_evals, n_in, L):
     # Inner loop: process all j for a given i
     for j in range(n_in):
         log_likelihood = eval_log_likelihood_cov_numba_prime(y_vals, model_evals[j, :], L)
-        evidence += np.exp(log_likelihood)
+        g_prod = safe_prod(model_evals[j, :])
+        evidence += np.exp(log_likelihood)/g_prod
         if i == j:
             log_likelihood_ij_same = log_likelihood
+            g_prod_ij_same = g_prod
 
     evidence /= n_in
-    utility = log_likelihood_ij_same - np.log(evidence)
+    utility = log_likelihood_ij_same - np.log(g_prod_ij_same) - np.log(evidence)
+    #print(i, log_likelihood_ij_same, np.log(evidence), utility)
     return utility
+
+@njit(fastmath=True)
+def safe_prod(vector):  
+    # we can ignore the sign bc we want det(diag(vector))
+    # Take the logarithm of the vector
+    log_vector = np.log(np.abs(vector))
+    
+    # Compute the log-product of the vector (sum of logs)
+    log_product = np.sum(log_vector)
+    
+    return math.exp(log_product)
 
 # Outer function with multiprocessing for the outer loop
 def utility_with_reuse_mp_cov(y_vals, model_evals, n_in, n_out, cov_all, n_workers=None):
@@ -646,8 +661,8 @@ def utility_with_reuse_mp(y_vals, model_evals, n_in, n_out, rel_std, clusters_in
     all_inds = np.load("all_inds.npy")
 
     # Create a pool of workers
-    n_workers = n_workers or multiprocessing.cpu_count()-2
-    print("Number of cores in use: "+str(n_workers))
+    n_workers = n_workers or multiprocessing.cpu_count()-1
+    # print("Number of cores in use: "+str(n_workers))
     
     # for debugging only
     # results2 = []
@@ -715,8 +730,8 @@ def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitt
     clusters_inds_dict = {key: clusters_inds_npz[key] for key in clusters_inds_npz.files}
     corrs_clustered_dict = {key: corrs_clustered_npz[key] for key in corrs_clustered_npz.files}
 
-    print("starting sampling epsilon loop")
-    start_time = time.time()
+    # print("starting sampling epsilon loop")
+    # start_time = time.time()
     # for i in range(n_in):
     #     eps, _ = sample_epsilon_dict(g_evals[i,:], rel_std, clusters_inds_npz, corrs_clustered_npz, jitter)
     #     y_vals[i,:] = g_evals[i,:] + eps
@@ -744,15 +759,15 @@ def eig_mp(d, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz, jitt
     #     eps, eps_cov = sample_epsilon_dict(g_evals[i,:], rel_std, clusters_inds_dict, corrs_clustered_dict, jitter)
     #     y_vals[i,:] = g_evals[i,:] + eps
     
-    stop_time = time.time()
-    dur = stop_time-start_time
-    print("dur for sample eps: " +str(dur))
+    # stop_time = time.time()
+    # dur = stop_time-start_time
+    # print("dur for sample eps: " +str(dur))
     
-    start_time = time.time()
+    # start_time = time.time()
     eig = utility_with_reuse_mp(y_vals, g_evals, n_in, n_out, rel_std, clusters_inds_npz, corrs_clustered_npz)
-    stop_time = time.time()
-    dur = stop_time-start_time
-    print("dur for eig " +str(dur))
+    # stop_time = time.time()
+    # dur = stop_time-start_time
+    # print("dur for eig " +str(dur))
     
     return eig
 
