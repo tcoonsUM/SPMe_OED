@@ -140,7 +140,10 @@ if __name__ == "__main__":
         # Inside the optimization loop (after Step 6: Update training data and before the next iteration)
         headers = [f"x{i}" for i in range(candidate_orig.size(1))] + ["y"]
         data = torch.cat([candidate_orig, candidate_y], dim=1).tolist()  # Combine new candidate X and Y for tabulation
-        print(tabulate(data, headers, tablefmt="grid"))
+        table = tabulate(data, headers, tablefmt="grid")
+        print(table)
+        with open("oed_results.txt", "w") as f:
+            f.write(table)
     
     # Convert history lists to tensors for saving
     train_X_unscaled_tensor = torch.cat(train_X_unscaled, dim=0)
