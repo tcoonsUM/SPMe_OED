@@ -66,8 +66,8 @@ if __name__ == "__main__":
     rel_std = np.load("relative_stds.npy")
 
     # Define OED parameters
-    n_in = int(5e2)
-    n_out = int(5e2)
+    n_in = int(1e5)
+    n_out = int(1e5)
     n_theta = 8
     n_y = 135
 
